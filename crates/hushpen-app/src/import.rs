@@ -575,7 +575,12 @@ impl Import {
             .text
             .as_deref()
             .ok_or("Only a finished file has a transcript.")?;
-        write_result(&results_dir(), &item.name, text)
+        write_result(&self.results_dir(), &item.name, text)
+    }
+
+    /// `cache/transcripts` in Hushpen's own data folder, beside the other caches.
+    fn results_dir(&self) -> PathBuf {
+        self.storage.data.root().join("cache").join("transcripts")
     }
 
     /// What Quick Look shows for the selected row: the transcript once it is done, else the file.
@@ -917,17 +922,23 @@ fn expand_folders(paths: Vec<PathBuf>) -> Vec<PathBuf> {
 }
 
 /// Where dragged-out and Quick Look transcripts go. macOS clears the temporary folder by itself.
-fn results_dir() -> PathBuf {
-    std::env::temp_dir().join("Hushpen Transcripts")
-}
-
 /// Files older than this leave the results folder on the next write.
 const RESULT_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 60 * 60);
 
 /// Writes `<name without its ending>.txt` with `text` into `dir`, and deletes results there that
-/// are older than a day.
+/// are older than a day. The folder is owner-only, and the file is always made new, so a link
+/// planted at its name is removed and never followed.
 fn write_result(dir: &Path, name: &str, text: &str) -> Result<PathBuf, String> {
-    std::fs::create_dir_all(dir).map_err(|error| format!("The transcript file could not be made: {error}"))?;
+    use std::io::Write as _;
+    let made = |error: std::io::Error| format!("The transcript file could not be made: {error}");
+    let mut folder = std::fs::DirBuilder::new();
+    folder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut folder, 0o700);
+    folder.create(dir).map_err(made)?;
+    #[cfg(unix)]
+    std::fs::set_permissions(dir, std::os::unix::fs::PermissionsExt::from_mode(0o700))
+        .map_err(made)?;
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let old = entry
@@ -945,7 +956,18 @@ fn write_result(dir: &Path, name: &str, text: &str) -> Result<PathBuf, String> {
         .file_stem()
         .map_or_else(|| name.to_owned(), |stem| stem.to_string_lossy().into_owned());
     let path = dir.join(format!("{stem}.txt"));
-    std::fs::write(&path, format!("{text}\n"))
+    // Removes a link itself, not its target; create_new (O_EXCL) then refuses any link put back.
+    match std::fs::remove_file(&path) {
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(made(error)),
+        _ => {}
+    }
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    options
+        .open(&path)
+        .and_then(|mut file| file.write_all(format!("{text}\n").as_bytes()))
         .map_err(|error| format!("The transcript file could not be written: {error}"))?;
     Ok(path)
 }
