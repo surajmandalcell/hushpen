@@ -51,7 +51,9 @@ extern "C" {
     PARAKEET_API void hushpen_unified_free(struct hushpen_unified_model * model);
     PARAKEET_API const char * hushpen_unified_error(void);
     // Batch and finish return JSON with full text and timed words (seconds).
-    PARAKEET_API const char * hushpen_unified_batch(struct hushpen_unified_model * model, const float * pcm, int n, const char * lang);
+    // resume starts the decoder from the state the previous batch saved. save_at >= 0 saves the
+    // decoder state at that sample of pcm (where the next window starts) for the next batch.
+    PARAKEET_API const char * hushpen_unified_batch(struct hushpen_unified_model * model, const float * pcm, int n, const char * lang, bool resume, int save_at);
     PARAKEET_API struct hushpen_unified_stream * hushpen_unified_begin(struct hushpen_unified_model * model, const char * lang);
     // Feed returns only newly committed UTF-8 text, or the empty string.
     PARAKEET_API const char * hushpen_unified_feed(struct hushpen_unified_stream * stream, const float * pcm, int n);

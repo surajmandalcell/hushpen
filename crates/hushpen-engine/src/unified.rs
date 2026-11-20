@@ -11,6 +11,12 @@ use std::path::Path;
 use std::ptr::NonNull;
 use whisper_rs_sys as ffi;
 
+/// Windows up to 40 s keep the full attention the model scores best with. Past that, words
+/// near the end of a window can be lost, such as the last 2.5 s of a 1 minute file.
+const WINDOW: usize = 40 * windows::SAMPLE_RATE;
+/// Each side keeps 3 s past the handover, so a word cut at a window edge is whole in one.
+const OVERLAP: usize = 6 * windows::SAMPLE_RATE;
+
 pub(crate) struct Unified {
     model: NonNull<ffi::hushpen_unified_model>,
     weights: Vec<Range<usize>>,
@@ -182,9 +188,17 @@ impl AsrEngine for Unified {
         progress: &mut dyn FnMut(f32),
     ) -> Result<Transcript, EngineError> {
         let lang = language(options)?;
-        let mut input = Windows::new(source);
+        let mut input = Windows::sized(source, WINDOW, OVERLAP);
         let mut segments = Vec::new();
+        let mut resume = false;
         while let Some((window, pcm)) = input.next(cancel)? {
+            // Save the decoder state where the next window starts: a cold decoder that starts
+            // mid-sentence can write nothing for a whole window.
+            let save_at = if window.keep_to == usize::MAX {
+                -1
+            } else {
+                (pcm.len() - OVERLAP) as i32
+            };
             // SAFETY: the bounded window, language, and exclusive model are live throughout.
             let json = unsafe {
                 native_text(ffi::hushpen_unified_batch(
@@ -192,8 +206,11 @@ impl AsrEngine for Unified {
                     pcm.as_ptr(),
                     pcm.len() as i32,
                     lang.as_ptr(),
+                    resume,
+                    save_at,
                 ))?
             };
+            resume = save_at >= 0;
             if cancel.is_cancelled() {
                 return Err(EngineError::Cancelled);
             }
