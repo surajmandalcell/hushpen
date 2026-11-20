@@ -51,9 +51,18 @@ fn home(cx: &mut TestAppContext) -> Home {
     shell.update(cx, |shell, cx| {
         shell.attach_mic(rig.mic.clone(), cx);
         shell.attach_dictation(rig.dictation.clone(), cx);
+        // The Dictation and Microphone test groups sit at the top of Settings.
+        shell.select(crate::views::View::Settings, cx);
     });
     let home = Home { rig, handle };
     act(cx, &home, |_, _| {});
+    // Lets the content pane settle after the switch to Settings, so its rise does not mix with
+    // the menu's drop.
+    cx.executor()
+        .advance_clock(std::time::Duration::from_secs(1));
+    act(cx, &home, |window, cx| {
+        window.simulate_next_frame(cx);
+    });
     home
 }
 

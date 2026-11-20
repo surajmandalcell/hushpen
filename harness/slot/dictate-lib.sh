@@ -53,7 +53,11 @@ word_recall_ok() {
 start_app() {
   /harness/slot/app.sh start >/dev/null
   wait_until 20 dict_is .state idle
+  show_dictation
 }
+
+# The Dictation and Microphone test groups (home.* ids) live at the top of Settings.
+show_dictation() { "$HC" click sidebar.settings >/dev/null 2>&1 || true; }
 
 # fresh [models...]: empties /data, copies the models from /assets, starts the app
 fresh() {

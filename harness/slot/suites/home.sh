@@ -178,7 +178,7 @@ check_failures "VAL-MOD-010 active model in use" "small-q5_1 loaded with UI pid 
 echo "== VAL-HOME-007 no model: Home cannot start and points to Models"
 fresh
 sleep 0.5
-$HC click sidebar.home >/dev/null
+$HC click sidebar.settings >/dev/null
 sleep 0.4
 shot 007-no-model
 $HC tree >"$RUN_OUT/007-tree.json"
