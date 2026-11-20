@@ -142,6 +142,14 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
 
     let application = gpui_kit::application().with_assets(AppAssets);
     application.on_reopen(main_window::reopened);
+    // Files from the Dock icon and Open With; registered first so the file that launched us counts.
+    let (opened, opened_paths) = mpsc::unbounded::<Vec<std::path::PathBuf>>();
+    {
+        let opened = opened.clone();
+        application.on_open_urls(move |urls| {
+            let _ = opened.unbounded_send(crate::files::extras::file_paths(urls));
+        });
+    }
     application
         .run(move |cx| {
             // Reads only: macOS lists Hushpen in the Privacy panes at the launch, with no prompt.
@@ -317,6 +325,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 )
             });
             shell.update(cx, |shell, cx| shell.attach_files(files.clone(), cx));
+            crate::files::extras::install(cx, shell.downgrade(), files.clone(), opened, opened_paths);
             let shortcuts =
                 cx.new(|cx| Shortcuts::new(Rc::clone(&dictation_storage), Platform::current(), cx));
             shell.update(cx, |shell, cx| {

@@ -10,5 +10,55 @@
   <true/>
   <key>CFBundleIconName</key>
   <string>Hushpen</string>
+  <key>CFBundleDocumentTypes</key>
+  <array>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Audio and Video</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.audio</string>
+        <string>public.movie</string>
+      </array>
+    </dict>
+    <dict>
+      <key>CFBundleTypeName</key>
+      <string>Text</string>
+      <key>CFBundleTypeRole</key>
+      <string>Viewer</string>
+      <key>LSHandlerRank</key>
+      <string>Alternate</string>
+      <key>LSItemContentTypes</key>
+      <array>
+        <string>public.plain-text</string>
+        <string>net.daringfireball.markdown</string>
+      </array>
+    </dict>
+  </array>
+  <key>NSServices</key>
+  <array>
+    <dict>
+      <key>NSMenuItem</key>
+      <dict>
+        <key>default</key>
+        <string>Transcribe with Hushpen</string>
+      </dict>
+      <key>NSMessage</key>
+      <string>transcribeFiles</string>
+      <key>NSPortName</key>
+      <string>Hushpen</string>
+      <key>NSRequiredContext</key>
+      <dict/>
+      <key>NSSendFileTypes</key>
+      <array>
+        <string>public.audio</string>
+        <string>public.movie</string>
+      </array>
+    </dict>
+  </array>
 </dict>
 </plist>

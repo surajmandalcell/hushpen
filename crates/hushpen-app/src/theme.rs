@@ -287,9 +287,16 @@ pub mod size {
     /// One segment of a segmented control inside a row, such as Off, Auto, and Custom of
     /// Audio enhance, so the row keeps room for its title.
     pub const ROW_SEGMENT_WIDTH: f32 = 72.0;
-    /// The drop zone at the top of Manual, and the icon in its middle.
+    /// The drop card at the top of Manual: taller while the queue is empty, and the icon in its
+    /// middle. While files are dragged over it, a fan of file icons, each turned by the angle.
     pub const DROP_ZONE_HEIGHT: f32 = 152.0;
+    pub const DROP_ZONE_EMPTY_HEIGHT: f32 = 190.0;
     pub const DROP_ICON: f32 = 28.0;
+    pub const DROP_STACK_ICON: f32 = 40.0;
+    pub const DROP_STACK_OVERLAP: f32 = 14.0;
+    pub const DROP_STACK_DEGREES: f32 = 12.0;
+    /// The ring of a running file in the queue (the ring draws at three quarters of this).
+    pub const QUEUE_RING: f32 = 24.0;
     /// The text to read aloud: about seven lines before it scrolls.
     pub const TEXT_AREA_HEIGHT: f32 = 132.0;
     /// The progress bar of a file in the Manual queue, and the percent and time left after it.
