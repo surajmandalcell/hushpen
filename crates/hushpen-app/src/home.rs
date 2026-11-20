@@ -25,8 +25,8 @@ use std::time::Duration;
 const TYPING_WPM: f64 = 40.0;
 /// How many transcripts the Recent group shows.
 const RECENT: usize = 5;
-/// How many weeks the map shows, the current one last.
-const WEEKS: i64 = 36;
+/// How many weeks the map shows, the current one last: as many as fill the fixed-width window.
+const WEEKS: i64 = 37;
 const CELL: f32 = 14.0;
 const CELL_GAP: f32 = 3.0;
 const CELL_RADIUS: f32 = 3.0;
@@ -504,7 +504,7 @@ impl Home {
             .child(
                 div()
                     .flex()
-                    .justify_end()
+                    .justify_between()
                     .gap(px(CELL_GAP))
                     .w_full()
                     .overflow_hidden()
