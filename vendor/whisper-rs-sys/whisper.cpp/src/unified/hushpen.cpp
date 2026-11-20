@@ -5,7 +5,9 @@
 #include "tokenizer.hpp"
 #include "transcription_json.hpp"
 
+#include <chrono>
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 
 namespace {
@@ -93,11 +95,20 @@ const char* hushpen_unified_batch(hushpen_unified_model* model, const float* pcm
             return model->result.c_str();
         }
 
+        // HUSHPEN_PARAKEET_TIMINGS=1 prints the native time split of each window to stderr.
+        static const bool timings = std::getenv("HUSHPEN_PARAKEET_TIMINGS") != nullptr;
+        using clock = std::chrono::steady_clock;
+        auto ms = [](clock::time_point a, clock::time_point b) {
+            return std::chrono::duration<double, std::milli>(b - a).count();
+        };
+        const auto t0 = clock::now();
         int n_mels, mel_frames, channels, frames;
         std::vector<float> features, encoded, projected;
         pk::MelFrontend(ml).compute(std::vector<float>(pcm, pcm + n), features, n_mels, mel_frames);
+        const auto t1 = clock::now();
         pk::Encoder(ml).forward(features, n_mels, mel_frames, encoded, channels, frames);
         pk::PromptKernel(ml).apply(encoded, channels, frames, language, projected);
+        const auto t2 = clock::now();
         // The encoder stores [channel, time]. The RNNT decoder consumes one time step per row.
         std::vector<float> rows(projected.size());
         for (int t = 0; t < frames; ++t)
@@ -107,6 +118,9 @@ const char* hushpen_unified_batch(hushpen_unified_model* model, const float* pcm
         std::vector<pk::TokenInfo> tokens;
         auto ids = pk::rnnt_greedy(pk::PredictionNet(ml), pk::Joint(ml), rows, frames, channels,
                                    cfg.blank_id, cfg.max_symbols, &tokens);
+        if (timings)
+            std::fprintf(stderr, "unified_timings: audio %.1f s  mel %.1f ms  encoder %.1f ms  decoder %.1f ms  frames %d  tokens %zu\n",
+                         n / 16000.0, ms(t0, t1), ms(t1, t2), ms(t2, clock::now()), frames, ids.size());
         const float frame_sec = (float)cfg.hop_length * cfg.subsampling_factor / cfg.sample_rate;
         const auto& pieces = ml.tokenizer_pieces();
         model->result = pk::transcription_to_json(pk::detokenize(pieces, pk::strip_special_tokens(pieces, ids)),
