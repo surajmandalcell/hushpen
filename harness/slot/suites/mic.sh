@@ -28,6 +28,7 @@ wait_state() { # <state> <seconds>
 start_app() { # starts the app and waits for the hook to answer
   /harness/slot/app.sh start >/dev/null
   wait_until 10 cap_is .state idle
+  show_dictation
 }
 
 reset_app() { # empties /data and starts the app

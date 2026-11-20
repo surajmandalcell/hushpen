@@ -300,6 +300,7 @@ fn home_window(cx: &mut TestAppContext, rig: &Rig) -> gpui_kit::AnyWindowHandle 
     shell.update(cx, |shell, cx| {
         shell.attach_mic(rig.mic.clone(), cx);
         shell.attach_dictation(rig.dictation.clone(), cx);
+        shell.select(crate::views::View::Settings, cx);
     });
     cx.run_until_parked();
     handle

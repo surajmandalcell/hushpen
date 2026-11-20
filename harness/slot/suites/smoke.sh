@@ -134,7 +134,8 @@ echo "== sidebar tree and hookctl click"
 failures=""
 /app/hookctl tree >"$RUN_OUT/tree-sidebar.json"
 index=0
-for view in home history files dictionary models devices settings about; do
+# Transcribe and Read aloud (hook key `files`) are tabs of Home, not sidebar rows.
+for view in home history dictionary models devices settings about; do
   row=$(jq -c --arg id "sidebar.$view" '[.[] | select(.id == $id)] | first // empty' "$RUN_OUT/tree-sidebar.json")
   if [ -z "$row" ]; then
     failures+="sidebar.$view is not in the tree; "
@@ -151,7 +152,7 @@ for view in home history files dictionary models devices settings about; do
   [ "$(title_of)" = "$(title_for "$view")" ] || failures+="the title after hookctl click on $view is '$(title_of)'; "
   index=$((index + 1))
 done
-check_failures "sidebar tree and hookctl click" "8 items have text, enabled, focused, and bounds inside 0-232; hookctl click moved the neutral fill and the title to each" "$failures"
+check_failures "sidebar tree and hookctl click" "7 items have text, enabled, focused, and bounds inside 0-232; hookctl click moved the neutral fill and the title to each" "$failures"
 
 echo "== sidebar keyboard"
 failures=""
@@ -167,7 +168,7 @@ done
 # A hookctl click leaves the focus on its item; Home moves it to the first row by key.
 xdotool key Home
 sleep 0.3
-for view in home history files dictionary models devices settings about; do
+for view in home history dictionary models devices settings about; do
   [ "$(focused_item)" = "sidebar.$view" ] || failures+="focus is on '$(focused_item)', not sidebar.$view; "
   box=$(/app/hookctl tree | jq -r --arg id "sidebar.$view" '[.[] | select(.id == $id) | "\(.bounds.x | floor) \(.bounds.y | floor)"] | first // empty')
   if [ -n "$box" ]; then
@@ -183,7 +184,7 @@ for view in home history files dictionary models devices settings about; do
   xdotool key Down
   sleep 0.2
 done
-check_failures "sidebar keyboard" "Tab reached the sidebar; each of the 8 items showed the accent focus ring (#0A84FF), Enter opened it, and Down moved on" "$failures"
+check_failures "sidebar keyboard" "Tab reached the sidebar; each of the 7 items showed the accent focus ring (#0A84FF), Enter opened it, and Down moved on" "$failures"
 /app/hookctl action open-view '{"view":"home"}' >/dev/null
 /app/hookctl wait view=home 5000 >/dev/null 2>&1
 

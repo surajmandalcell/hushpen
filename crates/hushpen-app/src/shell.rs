@@ -702,17 +702,10 @@ impl Shell {
             &self.history,
             view,
         ) {
-            (Some(mic), _, _, _, View::Home) => {
-                let mut home = div()
-                    .flex()
-                    .flex_col()
-                    .gap(px(space::XXL))
-                    .children(self.home.clone());
-                if let Some(dictation) = &self.dictation {
-                    home = home.child(dictation::panel::render(dictation, shell, cx));
-                }
-                home.child(mic::panel::render(mic, cx)).into_any_element()
-            }
+            (_, _, _, _, View::Home) => match &self.home {
+                Some(home) => home.clone().into_any_element(),
+                None => placeholder(view, palette).into_any_element(),
+            },
             (_, Some(models), _, _, View::Models) => {
                 models::panel::render(models, cx).into_any_element()
             }
@@ -730,12 +723,42 @@ impl Shell {
                 Some(devices) => crate::devices::panel::render(devices, cx).into_any_element(),
                 None => placeholder(view, palette).into_any_element(),
             },
-            (_, _, _, _, View::Settings) => match &self.settings {
-                Some(settings) => {
-                    settings::render(settings, self.shortcuts.as_ref(), cx).into_any_element()
+            (mic, _, _, _, View::Settings) => {
+                // Record, the language, and the microphone test lead Settings; a search hides
+                // them, since they are not rows of the list.
+                let searching = self
+                    .settings
+                    .as_ref()
+                    .is_some_and(|settings| !settings.read(cx).query.is_empty());
+                let mut page = div().flex().flex_col().gap(px(space::XXL)).w_full();
+                if !searching {
+                    if let Some(dictation) = &self.dictation {
+                        page = page.child(ui::titled_section(
+                            palette,
+                            hook::id("settings", "dictation.heading"),
+                            "Dictation",
+                            dictation::panel::render(dictation, shell, cx),
+                            None,
+                        ));
+                    }
+                    if let Some(mic) = mic {
+                        page = page.child(ui::titled_section(
+                            palette,
+                            hook::id("settings", "mic.heading"),
+                            "Microphone test",
+                            mic::panel::render(mic, cx),
+                            None,
+                        ));
+                    }
                 }
-                None => placeholder(view, palette).into_any_element(),
-            },
+                page.child(match &self.settings {
+                    Some(settings) => {
+                        settings::render(settings, self.shortcuts.as_ref(), cx).into_any_element()
+                    }
+                    None => placeholder(view, palette).into_any_element(),
+                })
+                .into_any_element()
+            }
             (_, _, _, _, View::About) => match &self.about {
                 Some(about) => about::render(about, cx).into_any_element(),
                 None => placeholder(view, palette).into_any_element(),

@@ -8,7 +8,7 @@ pub mod panel;
 use crate::import::Import;
 use crate::read_aloud::ReadAloud;
 use crate::storage::Storage;
-use gpui_kit::{App, Context, Entity, FocusHandle};
+use gpui_kit::{App, Context, Entity};
 use hushpen_speech::TextFormat;
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
@@ -51,7 +51,6 @@ pub struct Files {
     storage: Rc<Storage>,
     import: Entity<Import>,
     read_aloud: Option<Entity<ReadAloud>>,
-    pub(crate) mode_focus: FocusHandle,
 }
 
 impl Files {
@@ -70,7 +69,6 @@ impl Files {
             storage,
             import,
             read_aloud,
-            mode_focus: cx.focus_handle().tab_stop(true),
         }
     }
 
