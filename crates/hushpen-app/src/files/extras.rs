@@ -23,8 +23,9 @@ pub const QUEUE_CONTEXT: &str = "ImportQueue";
 const DONE_TAG: &str = "queue-done";
 const COPY_ACTION: &str = "copy";
 
-/// Paths from outside the window: the Dock icon, Open With, and the Services menu.
-pub type Opened = UnboundedSender<Vec<PathBuf>>;
+/// Paths from outside the window: the Dock icon, Open With, and the Services menu. The flag
+/// brings the window to the front even when Hushpen is not the active app.
+pub type Opened = UnboundedSender<(Vec<PathBuf>, bool)>;
 
 /// Where outside paths and pasted text land: the Manual view, as with a drop on the window.
 #[derive(Clone)]
@@ -62,7 +63,7 @@ pub fn install(
     shell: WeakEntity<Shell>,
     files: Entity<Files>,
     sender: Opened,
-    mut opened: UnboundedReceiver<Vec<PathBuf>>,
+    mut opened: UnboundedReceiver<(Vec<PathBuf>, bool)>,
 ) {
     let route = Route { shell, files };
     cx.bind_keys([
@@ -89,13 +90,18 @@ pub fn install(
             }
         });
     }
+    // A Services item is picked in another app, so Hushpen comes forward to show the queue.
     hushpen_platform::file_services::serve(Box::new(move |paths| {
-        let _ = sender.unbounded_send(paths);
+        let _ = sender.unbounded_send((paths, true));
     }));
     cx.spawn(async move |cx| {
-        while let Some(paths) = opened.next().await {
+        while let Some((paths, front)) = opened.next().await {
             cx.update(|cx| {
-                main_window::show(cx);
+                // The Dock and Open With make Hushpen active first; `open -g` does not, and
+                // then the files queue without taking the front.
+                if front || hushpen_platform::file_services::app_is_active() {
+                    main_window::show(cx);
+                }
                 route.open(paths, cx);
             });
         }

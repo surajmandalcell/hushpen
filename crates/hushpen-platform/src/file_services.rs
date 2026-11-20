@@ -5,6 +5,16 @@
 
 use std::path::PathBuf;
 
+/// Whether the app is the active (front) app. `open -g` delivers files without making it so.
+pub fn app_is_active() -> bool {
+    #[cfg(target_os = "macos")]
+    return objc2::MainThreadMarker::new().is_some_and(|mtm| {
+        objc2_app_kit::NSApplication::sharedApplication(mtm).isActive()
+    });
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
 /// Makes the app the Services provider; `opened` gets the paths of each Services request.
 pub fn serve(opened: Box<dyn Fn(Vec<PathBuf>)>) {
     #[cfg(target_os = "macos")]
@@ -26,7 +36,9 @@ pub fn quick_look(path: PathBuf) {
 mod mac {
     use objc2::rc::Retained;
     use objc2::runtime::{AnyClass, AnyObject, NSObject, NSObjectProtocol};
-    use objc2::{ClassType, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send};
+    use objc2::{
+        ClassType, DefinedClass, MainThreadMarker, MainThreadOnly, define_class, msg_send,
+    };
     use objc2_app_kit::{NSApplication, NSPasteboard, NSUpdateDynamicServices};
     use objc2_foundation::{NSArray, NSInteger, NSString, NSURL};
     use std::cell::{OnceCell, RefCell};

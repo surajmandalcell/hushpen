@@ -143,11 +143,11 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
     let application = gpui_kit::application().with_assets(AppAssets);
     application.on_reopen(main_window::reopened);
     // Files from the Dock icon and Open With; registered first so the file that launched us counts.
-    let (opened, opened_paths) = mpsc::unbounded::<Vec<std::path::PathBuf>>();
+    let (opened, opened_paths) = mpsc::unbounded::<(Vec<std::path::PathBuf>, bool)>();
     {
         let opened = opened.clone();
         application.on_open_urls(move |urls| {
-            let _ = opened.unbounded_send(crate::files::extras::file_paths(urls));
+            let _ = opened.unbounded_send((crate::files::extras::file_paths(urls), false));
         });
     }
     application
