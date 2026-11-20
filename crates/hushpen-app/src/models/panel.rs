@@ -114,7 +114,7 @@ fn section_text(kind: ModelKind) -> (&'static str, &'static str) {
     match kind {
         ModelKind::Speech => (
             "Speech to Text",
-            "Parakeet is recommended. Use Whisper for other languages or translation.",
+            "Nemotron Unified is recommended. Parakeet is faster on long files. Use Whisper for other languages or translation.",
         ),
         ModelKind::Cleanup => (
             "Text cleanup",
