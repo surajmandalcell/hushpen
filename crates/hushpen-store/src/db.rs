@@ -7,6 +7,7 @@
 //! (`HISTORY_NEWER_SCHEMA`).
 
 use crate::{Error, Result, time};
+use rusqlite::functions::FunctionFlags;
 use rusqlite::{Connection, OpenFlags};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -128,7 +129,25 @@ END;
 INSERT INTO transcript_fts(transcript_fts) VALUES ('rebuild');
 ";
 
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2];
+/// Version 3 keeps a total for each local day (days since 1970-01-01 in the system time zone),
+/// so the Home stats survive Clear all. It is filled once from the completed dictations that
+/// are already there; `history::save` adds each new one.
+const SCHEMA_V3: &str = "
+CREATE TABLE daily_total (
+  day INTEGER PRIMARY KEY,
+  words INTEGER NOT NULL,
+  dictations INTEGER NOT NULL,
+  speech_ms INTEGER NOT NULL
+);
+INSERT INTO daily_total (day, words, dictations, speech_ms)
+SELECT CAST(julianday(created_at / 1000, 'unixepoch', 'localtime') - 2440587.5 AS INTEGER),
+  sum(hushpen_words(final_text)), count(*), sum(duration_ms)
+FROM transcript
+WHERE kind = 'dictation' AND status = 'completed' AND hushpen_words(final_text) > 0
+GROUP BY 1;
+";
+
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
 
 /// The `user_version` this build writes.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;
@@ -174,6 +193,16 @@ impl Database {
         }
 
         conn.busy_timeout(Duration::from_secs(5))?;
+        // The version 3 fill counts words the way `history::save` does.
+        conn.create_scalar_function(
+            "hushpen_words",
+            1,
+            FunctionFlags::SQLITE_UTF8 | FunctionFlags::SQLITE_DETERMINISTIC,
+            |context| {
+                let text: Option<String> = context.get(0)?;
+                Ok(crate::history::word_count(text.as_deref()))
+            },
+        )?;
         conn.pragma_update(None, "journal_mode", "WAL")?;
         conn.pragma_update(None, "foreign_keys", "ON")?;
         if found > 0 && found < target {

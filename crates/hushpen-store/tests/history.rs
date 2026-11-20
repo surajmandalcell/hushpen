@@ -413,3 +413,38 @@ fn only_a_row_whose_ai_text_was_used_can_be_undone() {
     assert_eq!(row.llm_outcome.as_deref(), Some("timeout"));
     assert_eq!(row.final_text.as_deref(), Some("A fast fox."));
 }
+
+#[test]
+fn daily_totals_fill_from_old_rows_count_new_ones_and_survive_clear_all() {
+    let tmp = tempfile::tempdir().unwrap();
+    let path = tmp.path().join("history").join("history.db");
+    let noon = 1_767_268_800_000; // 2026-01-01 12:00 UTC
+    let old = Database::open_with_migrations(&path, &hushpen_store::db::MIGRATIONS[..2]).unwrap();
+    old.connection()
+        .execute(
+            "INSERT INTO transcript (id, created_at, kind, status, duration_ms, final_text) \
+             VALUES ('O1', ?1, 'dictation', 'completed', 3000, 'one two three'), \
+             ('O2', ?1, 'import', 'completed', 9000, 'not a dictation')",
+            [noon],
+        )
+        .unwrap();
+    drop(old);
+
+    let db = Database::open(&path).unwrap();
+    let days = history::daily_totals(&db).unwrap();
+    assert_eq!(days.len(), 1, "the upgrade fills the day of the old dictation");
+    assert_eq!((days[0].words, days[0].dictations, days[0].speech_ms), (3, 1, 3000));
+
+    history::save(&db, &dictation("N1", noon + 1, "four five"), &[]).unwrap();
+    let stored = history::delete(&db, "N1").unwrap().unwrap();
+    history::restore(&db, &stored).unwrap();
+    history::clear(&db).unwrap();
+    assert_eq!(history::count(&db).unwrap(), 0);
+    let days = history::daily_totals(&db).unwrap();
+    assert_eq!(
+        (days[0].words, days[0].dictations, days[0].speech_ms),
+        (5, 2, 5000),
+        "a new dictation adds once, an undo adds nothing, Clear all keeps the totals"
+    );
+    assert!(history::today(&db).unwrap() > days[0].day);
+}
