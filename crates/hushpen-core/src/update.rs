@@ -21,12 +21,15 @@ pub fn check_due(last_check_ms: u64, now_ms: u64) -> bool {
 /// day (`YYYY-MM-DD`) and month (`YYYY-MM`) of this check, and whether each is new. The app
 /// keeps the last counted day and month and moves them only after the server answered 2xx.
 /// Days are UTC, because the app cannot read the local time zone without unsafe code.
+/// `usage` is the anonymous usage of yesterday, which the first check of a day sends while
+/// "Share anonymous usage" is on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Count {
     pub day: String,
     pub month: String,
     pub new_day: bool,
     pub new_month: bool,
+    pub usage: Option<crate::usage::Usage>,
 }
 
 impl Count {
@@ -38,6 +41,7 @@ impl Count {
             new_month: month != last_month,
             day,
             month,
+            usage: None,
         }
     }
 
@@ -59,6 +63,9 @@ impl Count {
         }
         if self.new_month {
             query.push_str("&m=1");
+        }
+        if let Some(usage) = self.usage {
+            query.push_str(&format!("&u={}", usage.number()));
         }
         query
     }

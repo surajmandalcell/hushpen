@@ -6,6 +6,7 @@ use super::{Controller, failure_for};
 use crate::hook;
 use futures::channel::oneshot;
 use gpui_kit::Context;
+use hushpen_core::cleanup::outcome::Outcome;
 use hushpen_core::dictation::RowStatus;
 use hushpen_core::dictionary;
 use hushpen_core::error::{ENGINE_NO_SPEECH, HISTORY_WRITE_FAILED};
@@ -140,6 +141,12 @@ impl Controller {
             hook::record_event("history", &format!("write-failed {HISTORY_WRITE_FAILED}"));
             return;
         }
+        let cleaned = ai
+            .as_ref()
+            .is_some_and(|record| record.outcome == Outcome::Used);
+        if !command && row.status == "completed" && cleaned && !self.ai_uses_endpoint() {
+            self.mark_cleanup_model(created_at);
+        }
         if let Some(wav) = wav {
             let kept = if keep_audio {
                 Some(self.archive_audio(&wav, &id))
@@ -154,6 +161,23 @@ impl Controller {
         self.history_revision += 1;
         self.last_row = Some(id);
         hook::record_event("history", &format!("saved {}", row.status));
+    }
+
+    /// Marks the local cleanup model as used today, for the anonymous usage number. The row
+    /// names only the speech model.
+    fn mark_cleanup_model(&self, created_at: i64) {
+        let stored = self
+            .storage
+            .settings
+            .get("cleanup.llm.modelId")
+            .and_then(|value| value.as_str().map(str::to_owned))
+            .unwrap_or_default();
+        let Some(entry) = hushpen_core::catalog::embedded().chosen_llm(&stored) else {
+            return;
+        };
+        if let Err(error) = history::add_day_model(&self.storage.database, created_at, &entry.id) {
+            log::warn!("the cleanup model of the day was not saved: {error}");
+        }
     }
 
     /// The text the model produced for `session` and that went in, if its AI step ended `used`.
