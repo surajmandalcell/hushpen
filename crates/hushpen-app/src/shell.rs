@@ -321,11 +321,17 @@ impl Shell {
     pub fn attach_devices(&mut self, devices: Entity<Devices>, cx: &mut Context<Self>) {
         cx.observe(&devices, |_, _, cx| cx.notify()).detach();
         self.devices = Some(devices.clone());
-        // Test launches only: a background screenshot cannot click, so it opens Add Device.
-        if std::env::var_os("HUSHPEN_TEST_ADD_DEVICE").is_some() {
+        // Test launches only: a background screenshot cannot click. `list` shows Devices, `1`
+        // opens Add Device on SSH, and an SSH alias also presses its Set Up button.
+        if let Ok(test) = std::env::var("HUSHPEN_TEST_ADD_DEVICE") {
             self.select(View::Devices, cx);
-            devices.update(cx, |devices, cx| {
-                devices.select_method(crate::devices::AddMethod::Remote, cx)
+            devices.update(cx, |devices, cx| match test.as_str() {
+                "list" => {}
+                "1" | "" => devices.select_method(crate::devices::AddMethod::Remote, cx),
+                host => {
+                    devices.select_method(crate::devices::AddMethod::Remote, cx);
+                    devices.request(crate::devices::Request::SetupSsh { host: host.into() }, cx);
+                }
             });
         }
         cx.notify();
