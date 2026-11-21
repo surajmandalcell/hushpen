@@ -81,7 +81,8 @@ fn about(device: &RemoteDevice) -> String {
     let way = match device.transport {
         Transport::Lan => "on this network",
         Transport::Tailscale => "on Tailscale",
-        Transport::Ssh { .. } => "through SSH",
+        Transport::Ssh { tunnel: true, .. } => "through SSH",
+        Transport::Ssh { .. } => "added over SSH",
     };
     format!("{} {kind} · {way}", system(device.device.os))
 }
@@ -256,7 +257,7 @@ fn facts(
             .child(check),
     );
     let (title, address) = match &device.transport {
-        Transport::Ssh { host } => ("SSH host", host.clone()),
+        Transport::Ssh { host, .. } => ("SSH host", host.clone()),
         Transport::Lan | Transport::Tailscale => ("Address", device.address.clone()),
     };
     let serves = device.device.serves;

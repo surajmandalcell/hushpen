@@ -350,7 +350,18 @@ impl Devices {
         for route in [&mut next.routes.speech, &mut next.routes.cleanup] {
             route.retain(|item| item != id);
         }
+        let tunnel = self
+            .settings
+            .devices
+            .iter()
+            .find_map(|device| match &device.transport {
+                Transport::Ssh { host, .. } if device.device.id == id => Some(host.clone()),
+                _ => None,
+            });
         self.save(next, cx)?;
+        if let Some(host) = tunnel {
+            self.storage.remote.tunnels.close(&host);
+        }
         self.health.remove(id);
         self.close(cx);
         Ok(())
@@ -517,7 +528,7 @@ impl Devices {
             .filter(|other| {
                 other.device.id == *id
                     || matches!((&other.transport, &device.transport),
-                        (Transport::Ssh { host: old }, Transport::Ssh { host: new }) if old == new)
+                        (Transport::Ssh { host: old, .. }, Transport::Ssh { host: new, .. }) if old == new)
             })
             .map(|other| other.device.id.clone())
             .collect();

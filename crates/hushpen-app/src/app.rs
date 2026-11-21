@@ -167,11 +167,13 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             let quit_llm = Rc::clone(&llm);
             let ai_llm = Rc::clone(&llm);
             let quit_voice_models = Arc::clone(&voice_models);
+            let quit_remote = Arc::clone(&storage.remote);
             cx.on_app_quit(move |_| {
                 hushpen_store::log_file::begin_quit();
                 quit_engine.shutdown();
                 quit_llm.shutdown();
                 quit_voice_models.shutdown();
+                quit_remote.tunnels.close_all();
                 log::logger().flush();
                 async {}
             })

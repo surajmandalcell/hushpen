@@ -9,7 +9,7 @@ use hushpen_engine::{
 };
 use hushpen_remote::{Identity, PairOffer, RemoteStream, WorkerKind};
 use hushpen_store::secrets::Secrets;
-use hushpen_store::settings::{RemoteDevice, RemoteSettings};
+use hushpen_store::settings::{RemoteDevice, RemoteSettings, Transport};
 use serde_json::{Map, Value};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -40,13 +40,89 @@ pub(crate) fn wait_load<T>(
     None
 }
 
+/// A device added over SSH tries its direct address this long before the SSH tunnel.
+const DIRECT_TIMEOUT: Duration = Duration::from_millis(1500);
+
 #[derive(Default)]
 pub struct Router {
     pub resolver: hushpen_remote::Resolver,
+    pub tunnels: crate::net::tunnel::Tunnels,
     health: Mutex<BTreeMap<String, Health>>,
+    /// The route that last worked for each SSH device: true for the tunnel.
+    tunneled: Mutex<BTreeMap<String, bool>>,
+}
+
+/// The order to try: a device added over SSH starts with the route that last worked, or the one
+/// it paired on, and falls back to the other. Other devices have only their address.
+fn ways(transport: &Transport, last: Option<bool>) -> Vec<bool> {
+    match transport {
+        Transport::Ssh { tunnel, .. } => {
+            let first = last.unwrap_or(*tunnel);
+            vec![first, !first]
+        }
+        Transport::Lan | Transport::Tailscale => vec![false],
+    }
 }
 
 impl Router {
+    /// Opens an authenticated session to a paired device, directly or through its SSH tunnel.
+    pub fn connect(&self, identity: &Identity, device: &RemoteDevice) -> io::Result<RemoteStream> {
+        let last = self
+            .tunneled
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .get(&device.device.id)
+            .copied();
+        let ways = ways(&device.transport, last);
+        let mut failure = None;
+        for &tunnel in &ways {
+            let address = if tunnel {
+                let Transport::Ssh { host, .. } = &device.transport else {
+                    continue;
+                };
+                let port = device
+                    .address
+                    .rsplit_once(':')
+                    .and_then(|(_, port)| port.parse().ok())
+                    .ok_or_else(|| io::Error::other("The saved address has no port."));
+                match port.and_then(|port| self.tunnels.address(host, port)) {
+                    Ok(address) => address,
+                    Err(problem) => {
+                        failure = Some(problem);
+                        continue;
+                    }
+                }
+            } else {
+                device.address.clone()
+            };
+            let timeout = if ways.len() > 1 && !tunnel {
+                DIRECT_TIMEOUT
+            } else {
+                CONNECT_TIMEOUT
+            };
+            match RemoteStream::connect(
+                address,
+                identity,
+                device.static_public_key,
+                None,
+                timeout,
+                &self.resolver,
+            ) {
+                Ok(session) => {
+                    if ways.len() > 1 {
+                        self.tunneled
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .insert(device.device.id.clone(), tunnel);
+                    }
+                    return Ok(session.stream);
+                }
+                Err(problem) => failure = Some(problem),
+            }
+        }
+        Err(failure.unwrap_or_else(|| io::Error::other("The device has no route.")))
+    }
+
     pub fn snapshot(&self) -> BTreeMap<String, Health> {
         let mut health = self.health.lock().unwrap_or_else(|p| p.into_inner());
         for entry in health.values_mut() {
@@ -75,16 +151,9 @@ impl Router {
                 continue;
             }
             let start = Instant::now();
-            let probe = match RemoteStream::connect(
-                device.address.clone(),
-                identity,
-                device.static_public_key,
-                None,
-                CONNECT_TIMEOUT,
-                &self.resolver,
-            ) {
-                Ok(session) => {
-                    drop(session);
+            let probe = match self.connect(identity, device) {
+                Ok(stream) => {
+                    drop(stream);
                     Probe::Ready {
                         latency_ms: u32::try_from(start.elapsed().as_millis()).unwrap_or(u32::MAX),
                     }
@@ -149,15 +218,7 @@ impl Routing {
             .private_key
             .ok_or_else(|| io::Error::other("device key unavailable"))?;
         let identity = Identity::from_private(key)?;
-        RemoteStream::connect(
-            device.address.clone(),
-            &identity,
-            device.static_public_key,
-            None,
-            CONNECT_TIMEOUT,
-            &self.router.resolver,
-        )
-        .map(|session| session.stream)
+        self.router.connect(&identity, device)
     }
 
     /// A failed attempt backs off that device and asks core for the next route.
@@ -341,6 +402,14 @@ impl Routing {
     }
 }
 
+pub fn host_address(host: &str, port: u16) -> String {
+    if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    }
+}
+
 /// The caller saves the public pin only after authentication succeeds.
 pub fn authenticate_pair(
     identity: &Identity,
@@ -348,11 +417,7 @@ pub fn authenticate_pair(
     resolver: &hushpen_remote::Resolver,
 ) -> io::Result<(String, [u8; 32])> {
     let offer = PairOffer::from_bootstrap(bootstrap)?;
-    let address = if offer.host.contains(':') {
-        format!("[{}]:{}", offer.host, offer.port)
-    } else {
-        format!("{}:{}", offer.host, offer.port)
-    };
+    let address = host_address(&offer.host, offer.port);
     let session = RemoteStream::connect(
         address.clone(),
         identity,
@@ -370,6 +435,20 @@ pub fn authenticate_pair(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn ssh_devices_try_the_route_that_last_worked_then_the_other() {
+        let ssh = |tunnel| Transport::Ssh {
+            host: "oci2".into(),
+            tunnel,
+        };
+        assert_eq!(ways(&ssh(false), None), [false, true]);
+        assert_eq!(ways(&ssh(true), None), [true, false]);
+        assert_eq!(ways(&ssh(false), Some(true)), [true, false]);
+        assert_eq!(ways(&ssh(true), Some(false)), [false, true]);
+        assert_eq!(ways(&Transport::Lan, Some(true)), [false]);
+        assert_eq!(ways(&Transport::Tailscale, None), [false]);
+    }
 
     #[test]
     fn remote_off_keeps_local_models_even_if_the_saved_switch_is_on() {

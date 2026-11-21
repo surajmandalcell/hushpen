@@ -549,6 +549,7 @@ fn seed_devices(storage: &Storage) {
                 Os::Linux,
                 Transport::Ssh {
                     host: "office".into(),
+                    tunnel: false,
                 },
                 UnloadRule::AfterIdle(30),
                 both,
