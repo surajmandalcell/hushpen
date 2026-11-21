@@ -258,11 +258,12 @@ fn run(
             let uri = device_ssh::setup(&host, &source, stopped, |step| {
                 let _ = sender.try_send(Update::Progress(step.label().into()));
             })?;
-            let (address, key) = pair_ssh(
+            let (address, key, tunnel) = pair_ssh(
                 &identity,
                 &uri,
                 device_ssh::hostname(&host, stopped),
                 device_ssh::tailscale(&host, stopped),
+                |port| router.tunnels.address(&host, port),
                 &router.resolver,
             )?;
             let device = Device {
@@ -277,7 +278,12 @@ fn run(
             };
             send(
                 sender,
-                Update::Paired(paired(device, address, key, Transport::Ssh { host })),
+                Update::Paired(paired(
+                    device,
+                    address,
+                    key,
+                    Transport::Ssh { host, tunnel },
+                )),
             )
         }
         Request::Probe => {
@@ -287,13 +293,17 @@ fn run(
     }
 }
 
+/// Pairs at the first server address that answers, else through the SSH tunnel that `tunnel`
+/// opens to the host port (D-55). Returns the server address to save, its key, and whether
+/// only the tunnel reached it.
 fn pair_ssh(
     identity: &Identity,
     bootstrap: &str,
     hostname: io::Result<String>,
     tailscale: io::Result<String>,
+    tunnel: impl FnOnce(u16) -> io::Result<String>,
     resolver: &hushpen_remote::Resolver,
-) -> io::Result<(String, [u8; 32])> {
+) -> io::Result<(String, [u8; 32], bool)> {
     let mut offer = PairOffer::from_bootstrap(bootstrap)?;
     let optional = |result: io::Result<String>| match result {
         Ok(output) => Ok(Some(output)),
@@ -309,19 +319,31 @@ fn pair_ssh(
     );
     let port = offer.port;
     let mut answered = None;
+    let mut saved = None;
     for host in hosts {
         offer.host = host;
         match remote_jobs::authenticate_pair(identity, &offer.to_bootstrap(), resolver) {
-            Ok(paired) => return Ok(paired),
+            Ok((address, key)) => return Ok((address, key, false)),
             Err(problem) if unreachable(&problem) => {}
             Err(problem) => answered = Some(problem),
         }
+        // Jobs try the first server address before the tunnel.
+        saved.get_or_insert_with(|| remote_jobs::host_address(&offer.host, port));
     }
-    Err(answered.unwrap_or_else(|| {
+    if let Some(problem) = answered {
+        return Err(problem);
+    }
+    let closed = || {
         io::Error::other(format!(
-            "The model host is running, but this computer cannot reach port {port} on the server. Open TCP port {port} in the server's firewall (for example `sudo ufw allow {port}/tcp`), or turn on Tailscale on both computers, then add the server again."
+            "The model host is running, but this computer cannot reach port {port} on the server, directly or through SSH. Check that `ssh <host>` works in Terminal, or open TCP port {port} in the server's firewall, then add the server again."
         ))
-    }))
+    };
+    let local = tunnel(port).map_err(|_| closed())?;
+    let (host, local_port) = local.rsplit_once(':').ok_or_else(closed)?;
+    offer.host = host.to_owned();
+    offer.port = local_port.parse().map_err(|_| closed())?;
+    let (_, key) = remote_jobs::authenticate_pair(identity, &offer.to_bootstrap(), resolver)?;
+    Ok((saved.ok_or_else(closed)?, key, true))
 }
 
 fn unreachable(problem: &io::Error) -> bool {
@@ -666,10 +688,60 @@ mod tests {
             &offer.to_bootstrap(),
             Err(io::Error::other("no hostname")),
             Err(io::Error::other("no Tailscale")),
+            |_| Err(io::Error::other("no SSH login")),
             &hushpen_remote::Resolver::default(),
         )
         .unwrap_err();
         assert!(problem.to_string().contains(&format!("reach port {port}")));
+    }
+
+    #[test]
+    fn ssh_pairing_on_a_closed_port_pairs_through_the_tunnel_and_saves_the_server_address() {
+        let closed = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        // Stands in for the local end of `ssh -L`.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let tunnel = listener.local_addr().unwrap();
+        let server = Identity::generate().unwrap();
+        let key = server.public();
+        let expires = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 60;
+        let mut offer = PairOffer::new("127.0.0.1".into(), closed, key, expires).unwrap();
+        offer.open_window("Test SSH host").unwrap();
+        let uri = offer.to_bootstrap();
+        let worker = std::thread::spawn(move || {
+            let (socket, _) = listener.accept().unwrap();
+            RemoteStream::accept(
+                socket,
+                &server,
+                &[],
+                Some(&mut offer),
+                Duration::from_secs(3),
+            )
+            .unwrap();
+        });
+        let (address, paired_key, tunneled) = pair_ssh(
+            &Identity::generate().unwrap(),
+            &uri,
+            Err(io::Error::other("no hostname")),
+            Err(io::Error::other("no Tailscale")),
+            |port| {
+                assert_eq!(port, closed);
+                Ok(tunnel.to_string())
+            },
+            &hushpen_remote::Resolver::default(),
+        )
+        .unwrap();
+        assert_eq!(address, format!("127.0.0.1:{closed}"));
+        assert_eq!(paired_key, key);
+        assert!(tunneled);
+        worker.join().unwrap();
     }
 
     /// Run it again to re-add: the key file keeps this computer's key between runs.
@@ -695,35 +767,98 @@ mod tests {
         .unwrap();
         assert!(matches!(source, device_ssh::Source::Local { .. }));
         let bootstrap = device_ssh::setup(&host, &source, &stopped, |_| {}).unwrap();
-        let resolver = hushpen_remote::Resolver::default();
-        let (address, key) = match std::env::var("HUSHPEN_SSH_TEST_TUNNEL_PORT") {
-            // A firewalled server is reached through `ssh -L <port>:127.0.0.1:47321`.
-            Ok(port) => {
-                let mut offer = PairOffer::from_bootstrap(&bootstrap).unwrap();
-                offer.host = "127.0.0.1".into();
-                offer.port = port.parse().unwrap();
-                remote_jobs::authenticate_pair(&identity, &offer.to_bootstrap(), &resolver)
-            }
-            Err(_) => pair_ssh(
-                &identity,
-                &bootstrap,
-                device_ssh::hostname(&host, &stopped),
-                device_ssh::tailscale(&host, &stopped),
-                &resolver,
-            ),
-        }
-        .unwrap();
-        // Jobs reconnect with the saved pin and no offer.
-        RemoteStream::connect(
-            address.clone(),
+        let router = remote_jobs::Router::default();
+        let (address, key, tunnel) = pair_ssh(
             &identity,
-            key,
-            None,
-            Duration::from_secs(5),
-            &resolver,
+            &bootstrap,
+            device_ssh::hostname(&host, &stopped),
+            device_ssh::tailscale(&host, &stopped),
+            |port| router.tunnels.address(&host, port),
+            &router.resolver,
         )
         .unwrap();
-        println!("SSH_PAIRED {address} {}", key_id(&key));
+        println!("SSH_PAIRED {address} {} tunnel={tunnel}", key_id(&key));
+        let device = paired(
+            Device {
+                id: key_id(&key),
+                name: host.clone(),
+                kind: DeviceKind::Server,
+                os: Os::Linux,
+                serves: Serves {
+                    speech: true,
+                    cleanup: true,
+                },
+            },
+            address,
+            key,
+            Transport::Ssh {
+                host: host.clone(),
+                tunnel,
+            },
+        );
+        // Jobs reconnect with the saved pin and no offer; the health probe takes the same route.
+        let ready = |router: &remote_jobs::Router| {
+            router.probe(&identity, std::slice::from_ref(&device), &stopped);
+            router.snapshot()[&device.device.id].clone()
+        };
+        router.connect(&identity, &device).unwrap();
+        let health = ready(&router);
+        println!("SSH_PROBE {:?} {:?} ms", health.status, health.latency_ms);
+        assert_eq!(health.status, hushpen_core::remote::Status::Ready);
+        // A dropped ssh child restarts on the next use.
+        let tunnels = || {
+            std::process::Command::new("pgrep")
+                .args(["-f", "127.0.0.1:47321 -- "])
+                .output()
+                .unwrap()
+                .stdout
+        };
+        if tunnel {
+            assert!(!tunnels().is_empty());
+            std::process::Command::new("pkill")
+                .args(["-f", "127.0.0.1:47321 -- "])
+                .status()
+                .unwrap();
+            std::thread::sleep(Duration::from_millis(300));
+            router.connect(&identity, &device).unwrap();
+            println!("SSH_RECONNECTED");
+        }
+        // One transcription on the server, when it holds the model named in the environment.
+        if let Ok(model) = std::env::var("HUSHPEN_SSH_TEST_MODEL") {
+            use hushpen_engine::{EngineClient, EngineLog, JobOutcome, Link, LoadSpec, RemoteSpec};
+            let stream = router.connect(&identity, &device).unwrap();
+            let client = EngineClient::start_link(
+                Link::Remote(RemoteSpec::new(stream, hushpen_remote::WorkerKind::Speech)),
+                hushpen_engine::Timing::default(),
+                EngineLog::discard(),
+            );
+            client
+                .load_model(LoadSpec {
+                    path: model.into(),
+                    gpu: false,
+                    threads: 4,
+                    idle: hushpen_core::idle::Idle::KEEP,
+                })
+                .wait_timeout(Duration::from_secs(120))
+                .unwrap()
+                .unwrap();
+            let wav = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../hushpen-engine/tests/fixtures/speech-short.wav");
+            let outcome = client
+                .transcribe(hushpen_engine::TranscribeSpec {
+                    wav_path: wav,
+                    language: Some("en".into()),
+                    prompt: None,
+                })
+                .wait_timeout(Duration::from_secs(120));
+            client.shutdown();
+            let Some(JobOutcome::Done(done)) = outcome else {
+                panic!("remote transcription failed: {outcome:?}");
+            };
+            println!("SSH_TRANSCRIBED {:?} in {} ms", done.text, done.decode_ms);
+        }
+        router.tunnels.close_all();
+        assert!(tunnels().is_empty(), "no ssh child is left");
     }
 
     struct Listening {
@@ -963,16 +1098,18 @@ mod tests {
                 assert_eq!(session.peer_key, client_key);
                 assert!(session.paired);
             });
-            let (paired_address, paired_key) = pair_ssh(
+            let (paired_address, paired_key, tunneled) = pair_ssh(
                 &client,
                 &uri,
                 hostname,
                 Err(io::Error::other("Tailscale is unavailable.")),
+                |_| panic!("a reachable host needs no tunnel"),
                 &hushpen_remote::Resolver::default(),
             )
             .unwrap();
             assert_eq!(paired_address, address.to_string());
             assert_eq!(paired_key, key);
+            assert!(!tunneled);
             worker.join().unwrap();
         }
     }
@@ -998,6 +1135,7 @@ mod tests {
                 &offer.to_bootstrap(),
                 hostname,
                 tailscale,
+                |_| panic!("a cancelled lookup opens no tunnel"),
                 &hushpen_remote::Resolver::default(),
             )
             .unwrap_err();

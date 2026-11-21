@@ -13,7 +13,11 @@ use std::collections::BTreeSet;
 pub enum Transport {
     Lan,
     Tailscale,
-    Ssh { host: String },
+    /// `tunnel`: the host port answered only through `ssh -L` at pairing (D-55).
+    Ssh {
+        host: String,
+        tunnel: bool,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,7 +149,7 @@ impl RemoteDevice {
             "serves": { "speech": self.device.serves.speech, "cleanup": self.device.serves.cleanup },
             "address": self.address,
             "staticPublicKey": self.static_public_key.to_vec(),
-            "transport": match &self.transport { Transport::Lan => json!({"kind":"lan"}), Transport::Tailscale => json!({"kind":"tailscale"}), Transport::Ssh{host} => json!({"kind":"ssh","host":host}) },
+            "transport": match &self.transport { Transport::Lan => json!({"kind":"lan"}), Transport::Tailscale => json!({"kind":"tailscale"}), Transport::Ssh{host, tunnel} => json!({"kind":"ssh","host":host,"tunnel":tunnel}) },
             "unloadRule": match self.unload_rule { UnloadRule::KeepLoaded => json!({"kind":"keepLoaded"}), UnloadRule::AfterIdle(minutes) => json!({"kind":"afterIdle","minutes":minutes}), UnloadRule::WhenMemoryLow => json!({"kind":"whenMemoryLow"}), UnloadRule::WhileServerModeOpen => json!({"kind":"whileServerModeOpen"}) },
         })
     }
@@ -210,6 +214,11 @@ impl RemoteDevice {
                 }
                 Transport::Ssh {
                     host: host.to_owned(),
+                    // Devices saved before D-55 tunnels try the direct address first.
+                    tunnel: transport
+                        .get("tunnel")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
                 }
             }
             _ => return None,

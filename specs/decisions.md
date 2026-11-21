@@ -400,7 +400,8 @@ new decision, add it here in the same change (D-21).
   SSH setup uses concrete Host aliases and BatchMode, verifies SHA-256
   before installation, starts the user service, and receives its offer over
   authenticated SSH. It tries Tailscale IPv4 before configured and offered
-  addresses, saving only one that passes Noise authentication.
+  addresses, saving only one that passes Noise authentication. When no
+  address answers, it pairs through an SSH tunnel (D-55) and saves that route.
   `DESIGN.md` owns the desktop page and sheets; `mobile/SCREENS.md` records
   phone screen state and intents.
 
@@ -468,7 +469,9 @@ new decision, add it here in the same change (D-21).
   user routes: their own Tailscale, a VPN, or SSH (D-50). Hushpen does not
   embed Tailscale (no tsnet or libtailscale) and runs no relay. A new off-LAN
   transport needs a new decision, with its hosts added to `xtask net-audit`
-  (D-14).
+  (D-14). A server added over SSH whose port 47321 does not answer directly is
+  reached through `ssh -L` to its loopback port, run by the user's own ssh and
+  `~/.ssh/config`; Noise still encrypts and authenticates, SSH is only the pipe.
 
 - **D-56 One anonymous usage number a day.** Desktop only, inside the D-14
   update check (so only while updates are on). The first check of a new day

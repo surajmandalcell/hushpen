@@ -14,7 +14,7 @@ use gpui_kit::{
     StatefulInteractiveElement, Styled, Window, canvas, div, px, svg,
 };
 use hushpen_core::remote::{DeviceKind, ModelKind, Route, Status, THIS_COMPUTER};
-use hushpen_store::settings::RemoteDevice;
+use hushpen_store::settings::{RemoteDevice, Transport};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -464,7 +464,12 @@ fn device_row(
             palette,
             hook::id("devices", &format!("{row}.title")),
             device.device.name.clone(),
-            None,
+            matches!(device.transport, Transport::Ssh { tunnel: true, .. }).then(|| {
+                (
+                    hook::id("devices", &format!("{row}.route")),
+                    "Through SSH".into(),
+                )
+            }),
         ))
         .child(latency_cell(palette, &row, reading.latency))
         .child(status_cell(palette, &row, &reading).w(px(size::DEVICE_STATUS_WIDTH)))

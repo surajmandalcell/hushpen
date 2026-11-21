@@ -104,6 +104,7 @@ fn each_transport_and_platform_rule_round_trips_and_unsupported_rules_are_refuse
         Transport::Tailscale,
         Transport::Ssh {
             host: "lin1".into(),
+            tunnel: true,
         },
     ] {
         device.transport = transport;

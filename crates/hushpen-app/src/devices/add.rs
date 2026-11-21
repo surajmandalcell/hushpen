@@ -504,7 +504,7 @@ fn remote(palette: Palette, devices: &Entity<Devices>, cx: &App) -> AnyElement {
     };
     let saved = |host: &str| {
         state.settings.devices.iter().any(
-            |device| matches!(&device.transport, Transport::Ssh { host: saved } if saved == host),
+            |device| matches!(&device.transport, Transport::Ssh { host: saved, .. } if saved == host),
         )
     };
     let mut rows: Vec<AnyElement> = state

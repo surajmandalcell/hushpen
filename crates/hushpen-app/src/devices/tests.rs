@@ -122,6 +122,7 @@ fn re_adding_an_ssh_host_replaces_its_old_key(cx: &mut TestAppContext) {
         device.static_public_key = [key; 32];
         device.transport = Transport::Ssh {
             host: "lin1".into(),
+            tunnel: false,
         };
         device
     };

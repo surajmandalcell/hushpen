@@ -179,7 +179,19 @@ Office server; verify it through SSH pairing and a real speech job.
 Its local service drop-in sets `--name "Office server"`. SSH pairing tries
 the host's Tailscale IPv4 address, then OpenSSH's configured HostName and the
 offered address. It saves the first address that passes Noise authentication.
-One of those addresses must accept the host's TCP port, normally 47321.
+When none of them accepts the host's TCP port, normally 47321, the app pairs
+and connects through `ssh -L` to that port instead, so the server needs only
+SSH open. The device row then says "Through SSH".
+
+The real-host test covers add, re-add, a health probe, a restart after the
+ssh child is killed, and one speech job through the tunnel:
+
+```sh
+HUSHPEN_SSH_TEST_HOST=oci2 \
+HUSHPEN_SSH_TEST_BUNDLES=/Applications/Hushpen.app/Contents/Resources/host \
+HUSHPEN_SSH_TEST_KEY=<scratch key file> HUSHPEN_SSH_TEST_MODEL=ggml-base-q5_1.bin \
+cargo test -p hushpen-app --lib ssh_setup_pairs_a_real_host -- --ignored --nocapture
+```
 `specs/decisions.md` D-02 names the retained setup.
 
 ## Phone and host release files
