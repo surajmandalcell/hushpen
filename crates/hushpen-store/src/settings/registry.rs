@@ -328,6 +328,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("startup.startHidden", Kind::Bool, |_| json!(false)),
     spec!("updates.check", Kind::Bool, |_| json!(false)),
     spec!("updates.autoInstall", Kind::Bool, |_| json!(false)),
+    spec!("updates.shareUsage", Kind::Bool, |_| json!(true)),
     spec!(internal "onboarding.completed", Kind::Bool, |_| json!(false)),
     spec!(internal "onboarding.step", Kind::OptionalText(64), |_| json!("")),
     spec!(internal "permissions.lastGranted", Kind::BoolMap, |_| json!({})),

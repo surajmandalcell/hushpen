@@ -47,6 +47,7 @@ pub enum RowId {
     UpdateCheck,
     AutoInstall,
     UpdateStatus,
+    ShareUsage,
 }
 
 pub struct RowMeta {
@@ -450,6 +451,13 @@ pub static ROWS: &[RowMeta] = &[
         "updates.status",
         "Check now",
         &["update", "version", "release notes", "restart"],
+    ),
+    RowMeta::new(
+        ShareUsage,
+        Updates,
+        "updates.shareUsage",
+        "Share anonymous usage",
+        &["privacy", "telemetry", "analytics", "statistics", "sent"],
     ),
 ];
 

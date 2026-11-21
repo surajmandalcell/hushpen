@@ -151,12 +151,16 @@ pub(crate) fn ensure_writable(db: &Database) -> Result<()> {
     Ok(())
 }
 
-/// Saves one row and its segments in one step, and adds a completed dictation to the total of
-/// its day. The row is the record: a total that cannot be written is logged, never a lost row.
+/// Saves one row and its segments in one step, adds a completed dictation to the total of its
+/// day, and counts a completed use of its day. The row is the record: a total that cannot be
+/// written is logged, never a lost row.
 pub fn save(db: &Database, row: &Row, segments: &[Segment]) -> Result<()> {
     insert_row(db, row, segments)?;
     if let Err(error) = add_to_day(db, row) {
         log::warn!("the daily total was not updated: {error}");
+    }
+    if let Err(error) = add_use(db, row) {
+        log::warn!("the daily use was not updated: {error}");
     }
     Ok(())
 }
@@ -201,9 +205,9 @@ pub struct DayTotal {
 
 /// Every day with a dictation, oldest first. Deletes and Clear all leave these alone.
 pub fn daily_totals(db: &Database) -> Result<Vec<DayTotal>> {
-    let mut statement = db.connection().prepare_cached(
-        "SELECT day, words, dictations, speech_ms FROM daily_total ORDER BY day",
-    )?;
+    let mut statement = db
+        .connection()
+        .prepare_cached("SELECT day, words, dictations, speech_ms FROM daily_total ORDER BY day")?;
     let days = statement
         .query_map([], |row| {
             Ok(DayTotal {
@@ -215,6 +219,78 @@ pub fn daily_totals(db: &Database) -> Result<Vec<DayTotal>> {
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     Ok(days)
+}
+
+/// How many days of use stay for the anonymous usage number, which reports only yesterday.
+const USE_DAYS_KEPT: i64 = 7;
+
+const LOCAL_DAY: &str =
+    "CAST(julianday(?1 / 1000, 'unixepoch', 'localtime') - 2440587.5 AS INTEGER)";
+
+/// Counts one use on the local day of a completed dictation, file transcription, or read
+/// aloud, and marks its model as used. Days older than [`USE_DAYS_KEPT`] are removed.
+fn add_use(db: &Database, row: &Row) -> Result<()> {
+    let counted = row.status == "completed"
+        && match row.kind.as_str() {
+            "dictation" => word_count(row.final_text.as_deref()) > 0,
+            "import" | "read" => true,
+            _ => false,
+        };
+    if !counted {
+        return Ok(());
+    }
+    let conn = db.connection();
+    conn.execute(
+        &format!(
+            "INSERT INTO daily_use (day, uses) VALUES ({LOCAL_DAY}, 1) \
+             ON CONFLICT(day) DO UPDATE SET uses = uses + 1"
+        ),
+        params![row.created_at],
+    )?;
+    if let Some(model) = &row.model_id {
+        add_day_model(db, row.created_at, model)?;
+    }
+    for table in ["daily_use", "daily_model"] {
+        conn.execute(
+            &format!("DELETE FROM {table} WHERE day < {LOCAL_DAY} - ?2"),
+            params![row.created_at, USE_DAYS_KEPT],
+        )?;
+    }
+    Ok(())
+}
+
+/// Marks `model` as used on the local day of `created_at`, such as the cleanup model of a
+/// dictation, which its row does not name.
+pub fn add_day_model(db: &Database, created_at: i64, model: &str) -> Result<()> {
+    db.connection().execute(
+        &format!("INSERT OR IGNORE INTO daily_model (day, model) VALUES ({LOCAL_DAY}, ?2)"),
+        params![created_at, model],
+    )?;
+    Ok(())
+}
+
+/// The uses of one local day and the ids of the models used, for the usage number.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct DayUse {
+    pub uses: i64,
+    pub models: Vec<String>,
+}
+
+/// The use of the local `day` (a [`DayTotal::day`]); zero uses when nothing was used.
+pub fn day_use(db: &Database, day: i64) -> Result<DayUse> {
+    let conn = db.connection();
+    let uses = conn
+        .query_row("SELECT uses FROM daily_use WHERE day = ?1", [day], |row| {
+            row.get(0)
+        })
+        .optional()?
+        .unwrap_or(0);
+    let mut statement =
+        conn.prepare_cached("SELECT model FROM daily_model WHERE day = ?1 ORDER BY model")?;
+    let models = statement
+        .query_map([day], |row| row.get(0))?
+        .collect::<rusqlite::Result<Vec<String>>>()?;
+    Ok(DayUse { uses, models })
 }
 
 /// Today as a [`DayTotal::day`].

@@ -365,7 +365,10 @@ impl Shell {
                 tuning.update(cx, |tuning, cx| tuning.dismiss(cx));
             }
             if let Some(settings) = &self.settings {
-                settings.update(cx, |settings, cx| settings.dismiss_prompt(cx));
+                settings.update(cx, |settings, cx| {
+                    settings.dismiss_prompt(cx);
+                    settings.dismiss_usage(cx);
+                });
             }
             if let Some(dictionary) = &self.dictionary {
                 dictionary.update(cx, |dictionary, cx| dictionary.dismiss_preview(cx));
@@ -912,6 +915,13 @@ impl Render for Shell {
                             .as_ref()
                             .filter(|_| self.active == View::Settings)?;
                         crate::settings::prompt_sheet(settings, window, cx)
+                    })
+                    .or_else(|| {
+                        let settings = self
+                            .settings
+                            .as_ref()
+                            .filter(|_| self.active == View::Settings)?;
+                        crate::settings::usage_sheet(settings, window, cx)
                     })
                     .or_else(|| {
                         let dictionary = self

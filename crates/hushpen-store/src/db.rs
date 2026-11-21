@@ -147,7 +147,21 @@ WHERE kind = 'dictation' AND status = 'completed' AND hushpen_words(final_text) 
 GROUP BY 1;
 ";
 
-pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
+/// Version 4 keeps, for each local day, how often Hushpen was used and which models ran, for
+/// the anonymous usage number of the update check (D-56). `history::save` adds to it.
+const SCHEMA_V4: &str = "
+CREATE TABLE daily_use (
+  day INTEGER PRIMARY KEY,
+  uses INTEGER NOT NULL
+);
+CREATE TABLE daily_model (
+  day INTEGER NOT NULL,
+  model TEXT NOT NULL,
+  PRIMARY KEY (day, model)
+);
+";
+
+pub const MIGRATIONS: &[&str] = &[SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
 
 /// The `user_version` this build writes.
 pub const SCHEMA_VERSION: i64 = MIGRATIONS.len() as i64;

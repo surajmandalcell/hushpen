@@ -9,6 +9,7 @@ mod panel;
 mod prompt;
 mod registry;
 pub mod search;
+mod usage;
 
 use crate::enhance::Tuning;
 use crate::hook;
@@ -29,6 +30,7 @@ use login::LoginCache;
 pub use login::LoginToggle;
 pub(crate) use panel::{render, search_field};
 pub(crate) use prompt::render as prompt_sheet;
+pub(crate) use usage::render as usage_sheet;
 
 /// Focus slots in [`Settings::control_focus`], shared with the panel.
 pub(crate) mod slots {
@@ -67,7 +69,9 @@ pub(crate) mod slots {
     pub const IDLE_MINUTES: usize = 32;
     pub const PROFILE: usize = 33;
     pub const PROMPT: usize = 34;
-    pub const COUNT: usize = 35;
+    pub const SHARE_USAGE: usize = 35;
+    pub const USAGE_SENT: usize = 36;
+    pub const COUNT: usize = 37;
     /// The options of the open picker. One picker is open at a time, so they share a pool.
     pub const OPTIONS: usize = 12;
 }
@@ -167,6 +171,8 @@ pub struct Settings {
     pub(crate) tuning: Option<Entity<Tuning>>,
     /// The prompt sheet, which the Prompt row of Cleanup opens.
     pub(crate) prompt: prompt::PromptSheet,
+    /// The "See what's sent" dialog of Share anonymous usage.
+    pub(crate) usage: usage::UsageSheet,
     in_flight: Option<InFlight>,
 }
 
@@ -228,6 +234,7 @@ impl Settings {
             updater: None,
             tuning: None,
             prompt: prompt::PromptSheet::new(cx),
+            usage: usage::UsageSheet::new(cx),
             in_flight: None,
         };
         me.refresh_login(cx);

@@ -4,7 +4,8 @@
 //! names this machine or this install. The manifest counts only after its signature matches the
 //! public key that ships inside the app (`assets/update-key.pub`). The count ([`UpdateFeed::count`])
 //! sends the app name, platform, version, and day or month flags to the shared update API, and
-//! nothing that identifies the person or the install (D-14).
+//! nothing that identifies the person or the install (D-14). The first count of a day also
+//! sends the usage number of `hushpen_core::usage` while "Share anonymous usage" is on (D-56).
 
 use super::download::{Downloader, Outcome, Progress, Spec};
 use super::fetch::{FetchError, Fetcher, UreqFetcher};
@@ -45,6 +46,11 @@ fn signature_error(detail: impl Into<String>) -> CheckError {
 fn blocked_error(blocked: &Blocked) -> CheckError {
     record(Purpose::UpdateCheck, &blocked.host, "blocked");
     failed(blocked.reason.clone())
+}
+
+/// The full count request of `query`, which "See what's sent" in Settings also shows.
+pub fn count_url(query: &str) -> String {
+    format!("{COUNT_URL}?{query}")
 }
 
 /// One GET with an 8 second limit, no redirect, no cookie. Silent on any error.
@@ -136,7 +142,7 @@ impl UpdateFeed {
     /// source: nothing in the answer is read, and the signed manifest stays the only thing that
     /// offers or verifies a download. True when the server answered 2xx. A test feed never counts.
     pub fn count(&self, query: &str) -> bool {
-        self.manifest_url == FEED_URL && send_count(&format!("{COUNT_URL}?{query}"))
+        self.manifest_url == FEED_URL && send_count(&count_url(query))
     }
 
     pub fn fetcher(&self) -> UreqFetcher {
