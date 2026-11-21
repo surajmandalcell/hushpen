@@ -470,13 +470,15 @@ new decision, add it here in the same change (D-21).
   transport needs a new decision, with its hosts added to `xtask net-audit`
   (D-14).
 
-- **D-56 No usage counting.** The apps send no usage counts, install ids, or
-  analytics. The one exception is the update-check count of D-14 (desktop,
-  only while updates are on). The website is opened in a browser only. User
-  numbers come only from sources outside the app, read once a week: App Store
-  Connect App Analytics and Sales and Trends (iOS), GitHub release download
-  counts (desktop, APK, host), and Cloudflare request counts for the install
-  scripts and the site.
+- **D-56 One anonymous usage number a day.** Desktop only, inside the D-14
+  update check (so only while updates are on). The first check of a new day
+  adds `u`: the previous local day's uses (completed dictations, file
+  transcriptions, and read-alouds, capped at 1023) in bits 0-9, a bitmask of
+  the models used in bits 10-25 (slot list `hushpen_core::usage::MODEL_SLOTS`,
+  same order in the API), and version 1 in bits 26-27. Settings "Share
+  anonymous usage" is on by default and turns it off; "See what's sent" shows
+  the exact request. No install ids, no other analytics; the server stores no
+  IP or id.
 
 - **D-57 Add a Device pairing.** `DESIGN.md` owns the Nearby | Remote sheet.
   mDNS is discovery only. Both peers commit before revealing fresh randomness.
