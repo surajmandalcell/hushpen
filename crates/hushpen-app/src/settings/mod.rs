@@ -325,6 +325,10 @@ impl Settings {
         })
         .detach();
         self.search = Some(search);
+        // Test launches only: a background screenshot cannot scroll, so it searches for the rows.
+        if let Ok(query) = std::env::var("HUSHPEN_TEST_SEARCH") {
+            self.search_for(&query, window, cx);
+        }
     }
 
     /// Shares the scroll position of the content pane, so a new query starts at the top.
