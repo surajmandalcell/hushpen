@@ -47,7 +47,7 @@ const CHECK: &str = "updates.check";
 const AUTO_INSTALL: &str = "updates.autoInstall";
 const LAST_CHECK: &str = "updates.lastCheckAt";
 const DISMISSED: &str = "updates.dismissedVersion";
-/// The last day and month the server counted, set only after it answered 2xx.
+/// The last day and month the server counted, set only after it answered 2xx or 404.
 const COUNT_DAY: &str = "updates.countedDay";
 const COUNT_MONTH: &str = "updates.countedMonth";
 /// Whether the first count of a day carries the usage of yesterday (D-56). On by default.
@@ -64,7 +64,7 @@ pub(crate) const BANNER_DISMISS: usize = 1;
 pub trait Checker: Send + Sync {
     fn check(&self, current: &Version) -> Result<Offer, CheckError>;
 
-    /// Sends the anonymous count `query` and says whether the server answered 2xx. It never
+    /// Sends the anonymous count `query` and says whether the server answered 2xx or 404. It never
     /// offers or verifies a download, and it is silent on error.
     fn count(&self, _query: &str) -> bool {
         false

@@ -71,7 +71,8 @@ fn send_count(url: &str) -> bool {
                 "apps.mandalsuraj.com",
                 &status.to_string(),
             );
-            response.status().is_success()
+            // The server counts before it answers 404 "No release published", so 404 is sent too.
+            response.status().is_success() || status == 404
         }
         Err(_) => {
             record(Purpose::UpdateCheck, "apps.mandalsuraj.com", "error");
@@ -140,7 +141,7 @@ impl UpdateFeed {
     /// The anonymous active-user count: one GET to the shared update API with the app, platform,
     /// version, and day or month flags of `hushpen_core::update::Count::query`. It is not an update
     /// source: nothing in the answer is read, and the signed manifest stays the only thing that
-    /// offers or verifies a download. True when the server answered 2xx. A test feed never counts.
+    /// offers or verifies a download. True when the server answered 2xx or 404. A test feed never counts.
     pub fn count(&self, query: &str) -> bool {
         self.manifest_url == FEED_URL && send_count(&count_url(query))
     }

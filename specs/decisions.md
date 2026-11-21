@@ -76,7 +76,7 @@ new decision, add it here in the same change (D-21).
   other data. Check for Updates in About with the check off sends nothing
   there. The host may appear only in `crates/hushpen-app/src/net/update.rs`;
   `xtask net-audit` fails elsewhere. The app stores the last counted UTC day
-  and month and moves them only after a 2xx answer. Privacy line for every
+  and month and moves them only after a 2xx or 404 answer (the server counts before its 404). Privacy line for every
   privacy text: "Update checks send the app name, platform, and version. We
   count them per day and keep nothing that identifies you."
 - **D-15 Cleanup.** Rule-based cleanup is on by default and runs offline. AI
