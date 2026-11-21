@@ -114,6 +114,29 @@ fn device_edits_reject_invalid_names_rules_and_replaced_pins(cx: &mut TestAppCon
 }
 
 #[gpui_kit::test]
+fn re_adding_an_ssh_host_replaces_its_old_key(cx: &mut TestAppContext) {
+    let (_dir, storage, devices) = rig(cx);
+    let server = |id: &str, key: u8| {
+        let mut device = phone(id, Os::Linux);
+        device.device.kind = DeviceKind::Server;
+        device.static_public_key = [key; 32];
+        device.transport = Transport::Ssh {
+            host: "lin1".into(),
+        };
+        device
+    };
+    devices.update(cx, |state, cx| {
+        state.add_paired(server("old", 1), cx).unwrap();
+        state.add_paired(server("old", 1), cx).unwrap();
+        state.add_paired(server("new", 2), cx).unwrap();
+    });
+    let saved = storage.settings.remote();
+    assert_eq!(saved.devices.len(), 1);
+    assert_eq!(saved.devices[0].device.id, "new");
+    assert_eq!(saved.routes.speech, ["new", THIS_COMPUTER]);
+}
+
+#[gpui_kit::test]
 fn closing_clears_pairing_and_snapshot_never_contains_the_offer(cx: &mut TestAppContext) {
     let (_dir, _storage, devices) = rig(cx);
     devices.update(cx, |state, cx| {

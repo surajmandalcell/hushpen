@@ -42,18 +42,31 @@ pub enum Source {
     },
 }
 
-/// A local bundle lets setup work before the host has a published release.
-pub fn source(directory: &Path, version: &str) -> io::Result<Source> {
-    let available: Vec<_> = ["x64", "arm64"]
-        .into_iter()
-        .filter_map(|architecture| {
-            let name = format!("Hushpen-{version}-host-linux-{architecture}.tar.gz");
-            let archive = directory.join(&name);
-            archive.is_file().then_some((architecture, name, archive))
-        })
-        .collect();
+/// A local bundle lets setup work before the host has a published release: a build made
+/// between releases speaks a newer pairing protocol than the published host of its version.
+/// `architecture` asks the server for its CPU and runs only when a local bundle exists.
+pub fn source(
+    directory: &Path,
+    version: &str,
+    architecture: impl FnOnce() -> io::Result<String>,
+) -> io::Result<Source> {
+    let name = |architecture: &str| format!("Hushpen-{version}-host-linux-{architecture}.tar.gz");
     let sums = directory.join("SHA256SUMS");
-    if available.len() == 1 && sums.is_file() {
+    let bundled = ["x64", "arm64"]
+        .into_iter()
+        .any(|architecture| directory.join(name(architecture)).is_file());
+    let available: Vec<_> = if bundled && sums.is_file() {
+        let architecture = architecture()?;
+        let archive = directory.join(name(&architecture));
+        archive
+            .is_file()
+            .then(|| (architecture.clone(), name(&architecture), archive))
+            .into_iter()
+            .collect()
+    } else {
+        Vec::new()
+    };
+    if available.len() == 1 {
         let mut manifest = String::new();
         File::open(sums)?
             .take(65_537)
@@ -79,7 +92,7 @@ pub fn source(directory: &Path, version: &str) -> io::Result<Source> {
         return Ok(Source::Local {
             archive: archive.clone(),
             sha256: sha256.to_owned(),
-            architecture: (*architecture).to_owned(),
+            architecture: architecture.clone(),
         });
     }
     Ok(Source::Release {
@@ -147,6 +160,44 @@ pub fn tailscale(host: &str, cancelled: &AtomicBool) -> io::Result<String> {
         "tailscale ip -4",
     ]);
     read_output(command, cancelled)
+}
+
+/// The server's CPU in host archive names: `x64` or `arm64`.
+pub fn architecture(host: &str, cancelled: &AtomicBool) -> io::Result<String> {
+    if !valid_host(host) {
+        return Err(invalid("Choose a host from your SSH config."));
+    }
+    let ask = || {
+        let mut command = Command::new("ssh");
+        command.args([
+            "-T",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=yes",
+            "-o",
+            "ConnectTimeout=10",
+            "--",
+            host,
+            "uname -m",
+        ]);
+        read_output(command, cancelled)
+    };
+    // One retry: a busy sshd sometimes drops a new login.
+    let output = ask()
+        .or_else(|problem| match problem.kind() {
+            io::ErrorKind::Interrupted => Err(problem),
+            _ => ask(),
+        })
+        .map_err(|problem| match problem.kind() {
+            io::ErrorKind::Interrupted => problem,
+            _ => io::Error::other(NO_SSH),
+        })?;
+    match output.trim() {
+        "x86_64" | "amd64" => Ok("x64".into()),
+        "aarch64" | "arm64" => Ok("arm64".into()),
+        _ => Err(io::Error::other(exit_message(11))),
+    }
 }
 
 /// `tailscale status --json` of this computer, or nothing when Tailscale is not installed or
@@ -375,11 +426,38 @@ pub fn setup(
     if !status.success() {
         // SSH errors can contain an offer, so only show our fixed failure text.
         let _ = errors;
-        return Err(io::Error::other(
-            "Server setup failed. Check SSH access, free space, and systemd user services.",
-        ));
+        return Err(io::Error::other(exit_message(status.code().unwrap_or(-1))));
     }
-    pairing.ok_or_else(|| io::Error::other("The server did not return a pairing offer."))
+    pairing.ok_or_else(|| {
+        io::Error::other("The server did not return a pairing offer. Add the server again.")
+    })
+}
+
+const NO_SSH: &str = "Hushpen could not log in over SSH. Check that `ssh <host>` works in Terminal without a password or host-key prompt, then try again.";
+
+/// Each exit code of the setup script names what the owner does next.
+fn exit_message(code: i32) -> &'static str {
+    match code {
+        10 => "The server is not Linux. Hushpen sets up Linux servers only.",
+        11 => "The server's processor is not supported. Hushpen needs x86-64 or ARM64 Linux.",
+        12 => {
+            "The server needs a writable drive other than the system drive for model data. Mount one, or set HUSHPEN_DATA_DIR in ~/.config/hushpen-host/environment on the server, then try again."
+        }
+        13 => "The model host download was damaged. Try again.",
+        14 => {
+            "The hushpen-host service is masked on the server. Run `systemctl --user unmask hushpen-host` there, then try again."
+        }
+        15 => {
+            "The model host did not start. Run `journalctl --user -u hushpen-host` on the server to see why, then try again."
+        }
+        16 => {
+            "Port 47321 on the server is used by another program. Stop that program, then try again."
+        }
+        255 => NO_SSH,
+        _ => {
+            "Server setup failed. Check that the server has free space and runs systemd user services, then try again."
+        }
+    }
 }
 
 fn terminate(child: &mut std::process::Child) {
@@ -416,9 +494,12 @@ fn receive(
     } else if line.starts_with('{') {
         let value: serde_json::Value = serde_json::from_str(line)
             .map_err(|_| invalid("The server returned an invalid pairing offer."))?;
-        let bootstrap = value["offer"]
-            .as_str()
-            .ok_or_else(|| invalid("The server returned no pairing offer."))?;
+        // Hosts before D-57 print `uri` and `otp`, which this app cannot pair with.
+        let bootstrap = value["offer"].as_str().ok_or_else(|| {
+            invalid(
+                "The model host for this Hushpen version is older than this app and cannot pair. Install a Hushpen build that includes the host files, then add the server again.",
+            )
+        })?;
         hushpen_remote::PairOffer::from_bootstrap(bootstrap)
             .map_err(|_| invalid("The server returned an invalid pairing offer."))?;
         if pairing.replace(bootstrap.to_owned()).is_some() {
@@ -571,9 +652,31 @@ mv -f "$unit.new" "$unit"
 echo 'HUSHPEN_STEP start'
 systemctl --user daemon-reload
 systemctl --user enable hushpen-host.service >/dev/null
+main=$(systemctl --user show -p MainPID --value hushpen-host.service 2>/dev/null || echo 0)
+# A model host started by hand still holds the port; only our own user's processes show a pid.
+if command -v ss >/dev/null; then
+    for pid in $(ss -Hltnp 'sport = :47321' 2>/dev/null | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); do
+        if [ "$pid" != "$main" ] && [ "$(cat "/proc/$pid/comm" 2>/dev/null)" = hushpen-host ]; then
+            kill "$pid" 2>/dev/null || true
+        fi
+    done
+fi
 systemctl --user restart hushpen-host.service
-sleep 1
-systemctl --user is-active --quiet hushpen-host.service
+# Ready means the service's own process holds the port, not another program.
+listening() {{
+    command -v ss >/dev/null || return 0
+    main=$(systemctl --user show -p MainPID --value hushpen-host.service)
+    ss -Hltnp 'sport = :47321' 2>/dev/null | grep -q "pid=$main,"
+}}
+tries=0
+until systemctl --user is-active --quiet hushpen-host.service && listening; do
+    tries=$((tries + 1))
+    if [ "$tries" -ge 20 ]; then
+        if [ -n "$(ss -Hltn 'sport = :47321' 2>/dev/null)" ]; then exit 16; fi
+        exit 15
+    fi
+    sleep 0.5
+done
 echo 'HUSHPEN_STEP pair'
 address=$(printf '%s\n' "$SSH_CONNECTION" | awk '{{print $3}}')
 [ -n "$address" ]
@@ -600,7 +703,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let name = "Hushpen-2.3.0-host-linux-x64.tar.gz";
         assert!(matches!(
-            source(directory.path(), "2.3.0").unwrap(),
+            source(directory.path(), "2.3.0", x64).unwrap(),
             Source::Release { .. }
         ));
         std::fs::write(directory.path().join(name), b"bundle").unwrap();
@@ -613,26 +716,65 @@ mod tests {
             archive,
             architecture,
             sha256,
-        } = source(directory.path(), "2.3.0").unwrap()
+        } = source(directory.path(), "2.3.0", x64).unwrap()
         else {
             panic!("one checksummed local bundle must be used");
         };
         assert_eq!(archive, directory.path().join(name));
         assert_eq!(architecture, "x64");
         assert_eq!(sha256, "ab".repeat(32));
-        std::fs::write(directory.path().join("SHA256SUMS"), "bad checksum").unwrap();
-        assert!(source(directory.path(), "2.3.0").is_err());
-        std::fs::write(
-            directory
-                .path()
-                .join("Hushpen-2.3.0-host-linux-arm64.tar.gz"),
-            b"other bundle",
-        )
-        .unwrap();
+        // An arm64 server with only an x64 bundle downloads the release instead.
         assert!(matches!(
-            source(directory.path(), "2.3.0").unwrap(),
+            source(directory.path(), "2.3.0", || Ok("arm64".into())).unwrap(),
             Source::Release { .. }
         ));
+        std::fs::write(directory.path().join("SHA256SUMS"), "bad checksum").unwrap();
+        assert!(source(directory.path(), "2.3.0", x64).is_err());
+    }
+
+    #[test]
+    fn local_source_picks_the_bundle_for_the_server_cpu() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut sums = String::new();
+        for (architecture, sum) in [("x64", "ab"), ("arm64", "cd")] {
+            let name = format!("Hushpen-2.5.0-host-linux-{architecture}.tar.gz");
+            std::fs::write(directory.path().join(&name), b"bundle").unwrap();
+            sums.push_str(&format!("{}  {name}\n", sum.repeat(32)));
+        }
+        std::fs::write(directory.path().join("SHA256SUMS"), sums).unwrap();
+        let Source::Local {
+            architecture,
+            sha256,
+            ..
+        } = source(directory.path(), "2.5.0", || Ok("arm64".into())).unwrap()
+        else {
+            panic!("the arm64 bundle must be used");
+        };
+        assert_eq!((architecture.as_str(), sha256), ("arm64", "cd".repeat(32)));
+        // The server is only asked when a bundle exists.
+        let empty = tempfile::tempdir().unwrap();
+        assert!(matches!(
+            source(empty.path(), "2.5.0", || panic!("no bundle, no SSH call")).unwrap(),
+            Source::Release { .. }
+        ));
+    }
+
+    #[test]
+    fn an_old_host_offer_and_script_exits_say_what_to_do() {
+        let mut offer = None;
+        let old = receive(
+            "{\"uri\":\"hushpen://pair\",\"otp\":\"123456\"}",
+            &mut |_| {},
+            &mut offer,
+        )
+        .unwrap_err();
+        assert!(old.to_string().contains("older than this app"));
+        assert!(exit_message(16).contains("Port 47321"));
+        assert!(exit_message(255).contains("ssh <host>"));
+    }
+
+    fn x64() -> io::Result<String> {
+        Ok("x64".into())
     }
 
     #[test]

@@ -254,7 +254,7 @@ fn run(
             )
         }
         Request::SetupSsh { host } => {
-            let source = ssh_source()?;
+            let source = ssh_source(&host, stopped)?;
             let uri = device_ssh::setup(&host, &source, stopped, |step| {
                 let _ = sender.try_send(Update::Progress(step.label().into()));
             })?;
@@ -307,18 +307,32 @@ fn pair_ssh(
         tailscale.as_deref().unwrap_or_default(),
         &offer.host,
     );
-    let mut failure = io::Error::other("The server did not answer at any address.");
+    let port = offer.port;
+    let mut answered = None;
     for host in hosts {
         offer.host = host;
         match remote_jobs::authenticate_pair(identity, &offer.to_bootstrap(), resolver) {
             Ok(paired) => return Ok(paired),
-            Err(problem) => failure = problem,
+            Err(problem) if unreachable(&problem) => {}
+            Err(problem) => answered = Some(problem),
         }
     }
-    Err(failure)
+    Err(answered.unwrap_or_else(|| {
+        io::Error::other(format!(
+            "The model host is running, but this computer cannot reach port {port} on the server. Open TCP port {port} in the server's firewall (for example `sudo ufw allow {port}/tcp`), or turn on Tailscale on both computers, then add the server again."
+        ))
+    }))
 }
 
-fn ssh_source() -> io::Result<device_ssh::Source> {
+fn unreachable(problem: &io::Error) -> bool {
+    use io::ErrorKind::*;
+    matches!(
+        problem.kind(),
+        TimedOut | ConnectionRefused | HostUnreachable | NetworkUnreachable | AddrNotAvailable
+    )
+}
+
+fn ssh_source(host: &str, stopped: &AtomicBool) -> io::Result<device_ssh::Source> {
     #[cfg(all(debug_assertions, feature = "test-automation"))]
     if let Some(archive) = std::env::var_os("HUSHPEN_TEST_HOST_ARCHIVE") {
         let sha256 = std::env::var("HUSHPEN_TEST_HOST_SHA256").map_err(io::Error::other)?;
@@ -333,7 +347,12 @@ fn ssh_source() -> io::Result<device_ssh::Source> {
     let directory = executable
         .parent()
         .ok_or_else(|| io::Error::other("The app folder is unavailable."))?;
-    device_ssh::source(directory, env!("CARGO_PKG_VERSION"))
+    // A signed macOS bundle keeps data files in Resources, not beside the executable.
+    #[cfg(target_os = "macos")]
+    let directory = &directory.join("../Resources/host");
+    device_ssh::source(directory, env!("CARGO_PKG_VERSION"), || {
+        device_ssh::architecture(host, stopped)
+    })
 }
 
 fn paired(
@@ -627,6 +646,85 @@ fn key_id(key: &[u8; 32]) -> String {
 mod tests {
     use super::*;
     use hushpen_remote::enrollment::Enrollment;
+
+    #[test]
+    fn ssh_pairing_on_a_closed_port_says_to_open_it() {
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let expires = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs()
+            + 120;
+        let server = Identity::generate().unwrap();
+        let offer = PairOffer::new("127.0.0.1".into(), port, server.public(), expires).unwrap();
+        let problem = pair_ssh(
+            &Identity::generate().unwrap(),
+            &offer.to_bootstrap(),
+            Err(io::Error::other("no hostname")),
+            Err(io::Error::other("no Tailscale")),
+            &hushpen_remote::Resolver::default(),
+        )
+        .unwrap_err();
+        assert!(problem.to_string().contains(&format!("reach port {port}")));
+    }
+
+    /// Run it again to re-add: the key file keeps this computer's key between runs.
+    #[test]
+    #[ignore = "Installs host bundles on HUSHPEN_SSH_TEST_HOST and pairs the key in HUSHPEN_SSH_TEST_KEY"]
+    fn ssh_setup_pairs_a_real_host() {
+        let host = std::env::var("HUSHPEN_SSH_TEST_HOST").unwrap();
+        let bundles =
+            std::path::PathBuf::from(std::env::var_os("HUSHPEN_SSH_TEST_BUNDLES").unwrap());
+        let key_file = std::path::PathBuf::from(std::env::var_os("HUSHPEN_SSH_TEST_KEY").unwrap());
+        let identity = match std::fs::read(&key_file) {
+            Ok(key) => Identity::from_private(key.try_into().unwrap()).unwrap(),
+            Err(_) => {
+                let identity = Identity::generate().unwrap();
+                std::fs::write(&key_file, identity.private()).unwrap();
+                identity
+            }
+        };
+        let stopped = AtomicBool::new(false);
+        let source = device_ssh::source(&bundles, env!("CARGO_PKG_VERSION"), || {
+            device_ssh::architecture(&host, &stopped)
+        })
+        .unwrap();
+        assert!(matches!(source, device_ssh::Source::Local { .. }));
+        let bootstrap = device_ssh::setup(&host, &source, &stopped, |_| {}).unwrap();
+        let resolver = hushpen_remote::Resolver::default();
+        let (address, key) = match std::env::var("HUSHPEN_SSH_TEST_TUNNEL_PORT") {
+            // A firewalled server is reached through `ssh -L <port>:127.0.0.1:47321`.
+            Ok(port) => {
+                let mut offer = PairOffer::from_bootstrap(&bootstrap).unwrap();
+                offer.host = "127.0.0.1".into();
+                offer.port = port.parse().unwrap();
+                remote_jobs::authenticate_pair(&identity, &offer.to_bootstrap(), &resolver)
+            }
+            Err(_) => pair_ssh(
+                &identity,
+                &bootstrap,
+                device_ssh::hostname(&host, &stopped),
+                device_ssh::tailscale(&host, &stopped),
+                &resolver,
+            ),
+        }
+        .unwrap();
+        // Jobs reconnect with the saved pin and no offer.
+        RemoteStream::connect(
+            address.clone(),
+            &identity,
+            key,
+            None,
+            Duration::from_secs(5),
+            &resolver,
+        )
+        .unwrap();
+        println!("SSH_PAIRED {address} {}", key_id(&key));
+    }
 
     struct Listening {
         _directory: tempfile::TempDir,
