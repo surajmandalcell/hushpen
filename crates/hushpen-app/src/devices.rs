@@ -510,12 +510,24 @@ impl Devices {
             self.failed(message.clone(), cx);
             return Err(message);
         }
-        next.devices.retain(|other| other.device.id != *id);
+        // Re-adding an SSH host replaces its old entry, even when the host made a new key.
+        let stale: Vec<String> = next
+            .devices
+            .iter()
+            .filter(|other| {
+                other.device.id == *id
+                    || matches!((&other.transport, &device.transport),
+                        (Transport::Ssh { host: old }, Transport::Ssh { host: new }) if old == new)
+            })
+            .map(|other| other.device.id.clone())
+            .collect();
+        next.devices
+            .retain(|other| !stale.contains(&other.device.id));
         for (kind, route) in [
             (ModelKind::Speech, &mut next.routes.speech),
             (ModelKind::Cleanup, &mut next.routes.cleanup),
         ] {
-            route.retain(|item| item != id);
+            route.retain(|item| item != id && !stale.contains(item));
             if device.device.serves.contains(kind) {
                 route.insert(0, id.clone());
             }

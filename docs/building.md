@@ -207,6 +207,13 @@ Use `linux-arm64` on arm64. `--out <folder>` changes the destination;
 service file, and license notices. Desktop SSH setup downloads the matching
 archive, checks its SHA-256, and installs it without sudo.
 
+A build made between releases can speak a newer pairing protocol than the
+published host of the same version. Its SSH setup then fails at Pair. For a
+local install, put both host archives and one `SHA256SUMS` that lists them in
+`Hushpen.app/Contents/Resources/host/` before signing (on Linux, beside the
+`hushpen` executable). SSH setup asks the server for its CPU and sends the
+matching archive instead of downloading the release.
+
 Android release CI builds both arm64-v8a and x86_64, runs unit tests, and
 signs the APK with the existing `hushpen` key. It reads these repository secrets:
 
