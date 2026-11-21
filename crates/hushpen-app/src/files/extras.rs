@@ -188,7 +188,7 @@ mod tests {
         let paths = file_paths(vec![
             "file:///Users/me/Talk%20one.m4a".to_owned(),
             "file://localhost/tmp/caf%C3%A9.wav".to_owned(),
-            "https://example.com/a.wav".to_owned(),
+            "https://localhost/a.wav".to_owned(),
             "file:///tmp/100%.mp3".to_owned(),
         ]);
         assert_eq!(
