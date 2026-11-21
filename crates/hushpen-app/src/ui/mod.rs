@@ -9,6 +9,7 @@ mod menu;
 #[cfg(test)]
 mod menu_tests;
 mod rows;
+mod sheet;
 mod tooltip;
 
 pub use controls::{
@@ -21,6 +22,7 @@ pub use rows::{
     Notice, fact_row, field_row, icon_row, labeled_row, menu_row, meter_row, named_lines,
     notice_row, press_row, row, slider_row, toggle_row,
 };
+pub use sheet::{Sheet, sheet};
 pub use tooltip::{covered, tooltip};
 
 use crate::theme::{BODY, Palette, SECONDARY, StyledType, size, space};

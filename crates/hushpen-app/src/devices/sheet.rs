@@ -3,11 +3,10 @@
 //! Done close it, and the focus goes back to the control that opened it.
 
 use super::{Devices, Picker, Sheet, add, detail, focus};
-use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, space};
+use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, space};
 use crate::ui::{self, Kind};
 use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::{
     AnyElement, App, Entity, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Role,
     StatefulInteractiveElement, Styled, Window, div, px,
@@ -64,39 +63,15 @@ pub fn render(devices: &Entity<Devices>, window: &mut Window, cx: &mut App) -> O
         .children(page.left)
         .child(div().flex_1())
         .children(page.right);
-    let sheet = div()
-        .id(hook::id("devices", "sheet"))
-        .test_support()
-        .role(Role::Dialog)
-        .aria_label(page.label)
-        .on_key_down(on_key)
-        .flex()
-        .flex_col()
-        .gap(px(space::LG))
-        .w(px(space::SHEET_WIDTH))
-        .p(px(space::XL))
-        .bg(palette.content)
-        .rounded(px(radius::WINDOW))
-        .border(theme::hairline())
-        .border_color(palette.separator)
-        .child(header(palette, page.title, page.subtitle))
-        .children(page.body)
-        .child(buttons);
-    // The trap takes over the id of the element it wraps, so it goes on the scrim and the sheet
-    // keeps its own.
-    Some(
-        div()
-            .focus_trap(hook::id("devices", "sheet.scrim"), &trap)
-            .absolute()
-            .inset_0()
-            .occlude()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(theme::faded(palette.scrim, arrival))
-            .child(motion::arrive(sheet, arrival, motion::TRAVEL))
-            .into_any_element(),
-    )
+    let sheet = ui::Sheet {
+        id: hook::id("devices", "sheet"),
+        scrim: hook::id("devices", "sheet.scrim"),
+        label: page.label.into(),
+        header: header(palette, page.title, page.subtitle).into_any_element(),
+        body: page.body,
+        footer: buttons.into_any_element(),
+    };
+    Some(ui::sheet(palette, sheet, &trap, arrival, on_key))
 }
 
 /// Closes the sheet and gives the focus back to the control that opened it.

@@ -2,11 +2,10 @@
 //! packs, and the sheet that previews the words of a pack.
 
 use super::{Dictionary, packs};
-use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, space};
+use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, space};
 use crate::ui::{self, Kind, Notice};
 use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::component::input::InputState;
 use gpui_kit::{
     AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
@@ -256,13 +255,11 @@ pub fn preview_sheet(
                 .truncate()
                 .child(line),
         );
-    // The list scrolls inside the frame, so the stroke and the corners of the group stay whole.
+    // A long list scrolls with the middle of the sheet (`preview.scroll`).
     let mut scroll = div()
-        .id(hook::id("dictionary", "preview.scroll"))
+        .id(hook::id("dictionary", "preview.rows"))
         .flex()
-        .flex_col()
-        .max_h(px(PREVIEW_HEIGHT))
-        .overflow_y_scroll();
+        .flex_col();
     for (index, row) in rows.into_iter().enumerate() {
         if index > 0 {
             scroll = scroll.child(ui::line(palette));
@@ -270,49 +267,28 @@ pub fn preview_sheet(
         scroll = scroll.child(row);
     }
     let list = ui::group_frame(hook::id("dictionary", "preview.list"), palette).child(scroll);
-    let sheet = div()
-        .id(hook::id("dictionary", "preview"))
-        .test_support()
-        .role(Role::Dialog)
-        .aria_label(pack.name.clone())
-        .on_key_down(on_key)
-        .flex()
-        .flex_col()
-        .gap(px(space::LG))
-        .w(px(space::SHEET_WIDTH))
-        .p(px(space::XL))
-        .bg(palette.content)
-        .rounded(px(radius::WINDOW))
-        .border(theme::hairline())
-        .border_color(palette.separator)
-        .child(header)
-        .child(list)
-        .child(div().flex().justify_end().child(ui::button(
-            palette,
-            hook::id("dictionary", "preview.done"),
-            "Done",
-            Kind::Default,
-            Some(&view.sheet_done),
-            true,
-            close,
-        )));
-    Some(
-        div()
-            .focus_trap(hook::id("dictionary", "preview.scrim"), &view.sheet_trap)
-            .absolute()
-            .inset_0()
-            .occlude()
+    let sheet = ui::Sheet {
+        id: hook::id("dictionary", "preview"),
+        scrim: hook::id("dictionary", "preview.scrim"),
+        label: pack.name.clone().into(),
+        header: header.into_any_element(),
+        body: vec![list.into_any_element()],
+        footer: div()
             .flex()
-            .items_center()
-            .justify_center()
-            .bg(theme::faded(palette.scrim, arrival))
-            .child(motion::arrive(sheet, arrival, motion::TRAVEL))
+            .justify_end()
+            .child(ui::button(
+                palette,
+                hook::id("dictionary", "preview.done"),
+                "Done",
+                Kind::Default,
+                Some(&view.sheet_done),
+                true,
+                close,
+            ))
             .into_any_element(),
-    )
+    };
+    Some(ui::sheet(palette, sheet, &view.sheet_trap, arrival, on_key))
 }
-
-/// The most the word list of the preview takes, so the sheet fits in the window.
-const PREVIEW_HEIGHT: f32 = 324.0;
 
 fn form(
     palette: Palette,
