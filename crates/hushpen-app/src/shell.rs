@@ -320,7 +320,14 @@ impl Shell {
 
     pub fn attach_devices(&mut self, devices: Entity<Devices>, cx: &mut Context<Self>) {
         cx.observe(&devices, |_, _, cx| cx.notify()).detach();
-        self.devices = Some(devices);
+        self.devices = Some(devices.clone());
+        // Test launches only: a background screenshot cannot click, so it opens Add Device.
+        if std::env::var_os("HUSHPEN_TEST_ADD_DEVICE").is_some() {
+            self.select(View::Devices, cx);
+            devices.update(cx, |devices, cx| {
+                devices.select_method(crate::devices::AddMethod::Remote, cx)
+            });
+        }
         cx.notify();
     }
 

@@ -9,7 +9,8 @@ use gpui_kit::TestSupportExt as _;
 use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::{
     AnyElement, App, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
-    Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px, relative,
+    Role, ScrollHandle, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
+    relative,
 };
 
 /// The most of the window height a sheet takes.
@@ -50,6 +51,14 @@ pub fn sheet(
                 .gap(px(space::LG))
                 .children(sheet.body),
         );
+    // Test launches only: a background screenshot cannot scroll, so the sheet shows its end.
+    let scroll = if std::env::var_os("HUSHPEN_TEST_SHEET_END").is_some() {
+        let end = ScrollHandle::new();
+        end.scroll_to_bottom();
+        scroll.track_scroll(&end)
+    } else {
+        scroll
+    };
     let card = div()
         .id(sheet.id)
         .test_support()
