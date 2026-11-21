@@ -5,12 +5,11 @@
 //! Done close it, and focus goes back to the control that opened it.
 
 use super::{BUILT_IN_NAME, Page, Playing, READING, Take, VoiceLibrary, detail, take_detail};
-use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, space};
+use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, space};
 use crate::ui::{self, Kind, Notice};
 use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
-use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::{
     AnyElement, App, Context, Entity, InteractiveElement, IntoElement, KeyDownEvent, ParentElement,
     Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
@@ -54,41 +53,19 @@ pub fn render(
         }
     };
     let me = library.read(cx);
-    let (title, body) = match page {
+    let (title, mut body) = match page {
         Page::List => ("Voices", list_page(palette, library, me)),
         Page::Add => ("Add Voice", add_page(palette, library, me, cx)),
     };
-    let sheet = div()
-        .id(id("sheet"))
-        .test_support()
-        .role(Role::Dialog)
-        .aria_label(title)
-        .on_key_down(on_key)
-        .flex()
-        .flex_col()
-        .gap(px(space::LG))
-        .w(px(space::SHEET_WIDTH))
-        .p(px(space::XL))
-        .bg(palette.content)
-        .rounded(px(radius::WINDOW))
-        .border(theme::hairline())
-        .border_color(palette.separator)
-        .children(body)
-        .child(footer(palette, library, page, me, close));
-    let trap = me.focus.trap.clone();
-    Some(
-        div()
-            .focus_trap(id("sheet.scrim"), &trap)
-            .absolute()
-            .inset_0()
-            .occlude()
-            .flex()
-            .items_center()
-            .justify_center()
-            .bg(theme::faded(palette.scrim, arrival))
-            .child(motion::arrive(sheet, arrival, motion::TRAVEL))
-            .into_any_element(),
-    )
+    let sheet = ui::Sheet {
+        id: id("sheet"),
+        scrim: id("sheet.scrim"),
+        label: title.into(),
+        header: body.remove(0),
+        body,
+        footer: footer(palette, library, page, me, close).into_any_element(),
+    };
+    Some(ui::sheet(palette, sheet, &me.focus.trap, arrival, on_key))
 }
 
 /// The title of the page and one line under it.

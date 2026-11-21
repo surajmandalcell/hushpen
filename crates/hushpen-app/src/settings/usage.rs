@@ -2,12 +2,11 @@
 //! the exact request the first update check of a day sends and the same data in words (D-56).
 
 use super::{Settings, slots};
-use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, size, space};
+use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, size, space};
 use crate::ui::{self, Kind, Notice};
 use crate::updater::SHARE_USAGE;
 use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::{
     AnyElement, App, Context, Entity, FocusHandle, InteractiveElement, IntoElement, KeyDownEvent,
     ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
@@ -146,45 +145,27 @@ pub fn render(
                 .text_color(palette.label_secondary)
                 .child("The first update check of each day sends this for the day before."),
         );
-    let sheet = div()
-        .id(id("sheet"))
-        .test_support()
-        .role(Role::Dialog)
-        .aria_label(title)
-        .on_key_down(on_key)
-        .flex()
-        .flex_col()
-        .gap(px(space::LG))
-        .w(px(space::SHEET_WIDTH))
-        .p(px(space::XL))
-        .bg(palette.content)
-        .rounded(px(radius::WINDOW))
-        .border(theme::hairline())
-        .border_color(palette.separator)
-        .child(header)
-        .children(body)
-        .child(div().flex().justify_end().child(ui::button(
-            palette,
-            id("done"),
-            "Done",
-            Kind::Default,
-            Some(&done),
-            true,
-            close,
-        )));
-    Some(
-        div()
-            .focus_trap(id("scrim"), &trap)
-            .absolute()
-            .inset_0()
-            .occlude()
+    let sheet = ui::Sheet {
+        id: id("sheet"),
+        scrim: id("scrim"),
+        label: title.into(),
+        header: header.into_any_element(),
+        body,
+        footer: div()
             .flex()
-            .items_center()
-            .justify_center()
-            .bg(theme::faded(palette.scrim, arrival))
-            .child(motion::arrive(sheet, arrival, motion::TRAVEL))
+            .justify_end()
+            .child(ui::button(
+                palette,
+                id("done"),
+                "Done",
+                Kind::Default,
+                Some(&done),
+                true,
+                close,
+            ))
             .into_any_element(),
-    )
+    };
+    Some(ui::sheet(palette, sheet, &trap, arrival, on_key))
 }
 
 /// A row that shows `text` whole, wrapped over as many lines as it needs.

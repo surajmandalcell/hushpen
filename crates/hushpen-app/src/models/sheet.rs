@@ -4,12 +4,11 @@
 
 use super::panel::{ACCURACY, SPEED, format_size, languages_text, scale, status_text};
 use super::{Models, Row, details::checksum_text};
-use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, radius, space};
+use crate::theme::{self, Palette, SECONDARY, StyledType, TOOLBAR_TITLE, space};
 use crate::ui::{self, Kind};
 use crate::{hook, motion};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
-use gpui_kit::base::FocusTrapElement as _;
 use gpui_kit::{
     AnyElement, App, Entity, InteractiveElement, IntoElement, KeyDownEvent, ParentElement, Role,
     StatefulInteractiveElement, Styled, Window, div, px,
@@ -118,48 +117,30 @@ pub fn render(models: &Entity<Models>, window: &mut Window, cx: &mut App) -> Opt
             }
         }
     };
-    let sheet = div()
-        .id(hook::id("models", "sheet"))
-        .test_support()
-        .role(Role::Dialog)
-        .aria_label(format!("{} details", row.entry.name))
-        .on_key_down(on_key)
-        .flex()
-        .flex_col()
-        .gap(px(space::LG))
-        .w(px(space::SHEET_WIDTH))
-        .p(px(space::XL))
-        .bg(palette.content)
-        .rounded(px(radius::WINDOW))
-        .border(theme::hairline())
-        .border_color(palette.separator)
-        .child(header(palette, row, info.as_ref()))
-        .child(ui::group(hook::id("models", "sheet.facts"), palette, facts))
-        .child(ui::group(hook::id("models", "sheet.files"), palette, files))
-        .child(div().flex().justify_end().child(ui::button(
-            palette,
-            hook::id("models", "sheet.done"),
-            "Done",
-            Kind::Default,
-            Some(&focus.done),
-            true,
-            close,
-        )));
-    // The trap takes over the id of the element it wraps, so it goes on the scrim and the sheet
-    // keeps its own.
-    Some(
-        div()
-            .focus_trap(hook::id("models", "sheet.scrim"), &focus.trap)
-            .absolute()
-            .inset_0()
-            .occlude()
+    let sheet = ui::Sheet {
+        id: hook::id("models", "sheet"),
+        scrim: hook::id("models", "sheet.scrim"),
+        label: format!("{} details", row.entry.name).into(),
+        header: header(palette, row, info.as_ref()).into_any_element(),
+        body: vec![
+            ui::group(hook::id("models", "sheet.facts"), palette, facts).into_any_element(),
+            ui::group(hook::id("models", "sheet.files"), palette, files).into_any_element(),
+        ],
+        footer: div()
             .flex()
-            .items_center()
-            .justify_center()
-            .bg(theme::faded(palette.scrim, arrival))
-            .child(motion::arrive(sheet, arrival, motion::TRAVEL))
+            .justify_end()
+            .child(ui::button(
+                palette,
+                hook::id("models", "sheet.done"),
+                "Done",
+                Kind::Default,
+                Some(&focus.done),
+                true,
+                close,
+            ))
             .into_any_element(),
-    )
+    };
+    Some(ui::sheet(palette, sheet, &focus.trap, arrival, on_key))
 }
 
 /// The name, the one-line description, and what the model suits.
