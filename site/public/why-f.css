@@ -174,15 +174,15 @@
 .ws-fly { position: absolute; left: 0; top: 0; z-index: 4; width: 32px; height: 32px; opacity: 0; transform-origin: 16px 16px; filter: drop-shadow(0 3px 6px rgba(0, 0, 0, .2)); }
 .ws-fly svg { width: 32px; height: 32px; }
 
-/* Hushpen: the real Home screenshot (assets/shots/home-light.webp, 940 by 600). The sidebar keeps its pixels
+/* Hushpen: the real Home screenshot (assets/shots/why-home-light.webp, 940 by 600). A frozen copy of the old Home, which still had Record. The sidebar keeps its pixels
    but takes the tint of the desktop, as the macOS sidebar material does; the rows under the notice move up. */
 .wf-hp { width: 940px; height: 600px; background: #F6F6F6; color: rgba(0, 0, 0, .85); font: 400 13px/1.3 var(--app); }
 .hh-sb { --hh-tint: linear-gradient(180deg, #E1E6F7 0%, #E8E4F5 55%, #F0E4EE 100%); position: absolute; left: 0; top: 0; width: 232px; height: 600px; isolation: isolate; background: var(--hh-tint); }
-.hh-img { position: absolute; inset: 0; background: url(assets/shots/home-light.webp) 0 0 / 940px 600px no-repeat; filter: brightness(1.095); mix-blend-mode: multiply; }
+.hh-img { position: absolute; inset: 0; background: url(assets/shots/why-home-light.webp) 0 0 / 940px 600px no-repeat; filter: brightness(1.095); mix-blend-mode: multiply; }
 /* The macOS title area: three window buttons and the name 16 px after them, over the same tint */
 .hh-nm { position: absolute; left: 12px; top: 10px; width: 164px; height: 32px; padding-left: 76px; background: var(--hh-tint) -12px -10px / 232px 600px; font: 600 13px/32px var(--app); }
 .hh-ct { position: absolute; left: 232px; top: 0; width: 708px; height: 600px; }
-.hh-a, .hh-b { position: absolute; left: 0; width: 708px; background: url(assets/shots/home-light.webp) -232px 0 / 940px 600px no-repeat; }
+.hh-a, .hh-b { position: absolute; left: 0; width: 708px; background: url(assets/shots/why-home-light.webp) -232px 0 / 940px 600px no-repeat; }
 .hh-a { top: 0; height: 92.5px; }
 .hh-b { top: 92.5px; height: 471px; background-position: -232px -129px; }
 .hh-tl { position: absolute; left: 20px; top: 20px; }
