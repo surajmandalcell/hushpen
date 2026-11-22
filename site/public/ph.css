@@ -4,7 +4,8 @@
 
 /* Platform strip: the five systems, each with what you can do today */
 .pf-sh { padding-bottom: 8px; }
-.pf { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
+/* Three cards while the Android and iOS cards are archived (2026-11-22); with them back this is repeat(5, ...) */
+.pf { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 20px; }
 .pf-c { position: relative; display: grid; grid-template-rows: 30px 1fr auto; align-content: start; gap: 14px; padding: 22px 22px 20px; border-radius: 22px; background: var(--tile); box-shadow: 0 0 0 .5px var(--line); color: var(--ink); transition: transform .45s var(--spring), box-shadow .3s; }
 a.pf-c:hover { transform: translateY(-4px); box-shadow: 0 0 0 .5px var(--line), 0 20px 40px -20px rgba(0, 0, 0, .22); }
 a.pf-c:active { transform: scale(.98); transition-duration: .12s; }

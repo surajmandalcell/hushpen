@@ -56,6 +56,25 @@
     }, () => { raw.textContent = EX[0][0]; res.textContent = EX[0][1]; });
   }
 
+  // Real-time with Nemotron: words land at talking speed (about 150 a minute). The newest word is a guess (gray)
+  // until the next one comes; the last one settles 0.30 s after you stop, the measured time in benchmarks.html.
+  const rt = document.querySelector('[data-rt]');
+  if (rt) {
+    const SAID = ['Can we move the design review to Thursday afternoon?', 'I will bring the new numbers.'];
+    const tx = rt.querySelector('.rt-tx'), h = rt.querySelector('.rt-h'), say = h.querySelector('span');
+    const done = on => { h.classList.toggle('done', on); say.textContent = on ? 'Nemotron, done' : 'Nemotron, listening'; };
+    const put = (ws, n, guess) => { tx.innerHTML = ws.slice(0, n).map((w, i) => `<span${guess && i === n - 1 ? ' class="g"' : ''}>${w}</span>`).join(' ') + '<b></b>'; };
+    let k = 0;
+    loop(rt, async () => {
+      const ws = SAID[k++ % SAID.length].split(' ');
+      done(false); put(ws, 0);
+      await hold(rt, 700);
+      for (let n = 1; n <= ws.length; n++) { put(ws, n, true); await hold(rt, n === ws.length ? 300 : 330 + (/[,.?]$/.test(ws[n - 1]) ? 250 : 0)); }
+      put(ws, ws.length); done(true);
+      await hold(rt, 2600);
+    }, () => { const ws = SAID[0].split(' '); put(ws, ws.length); done(true); });
+  }
+
   // Keys: the combinations people know from dictation apps, with Hushpen's own first, each in turn with its
   // keys pressed down together; the label swaps with it. The press lasts as long as the action does: a hold
   // key stays down while you speak, the rest are taps. Each combo is [action, press ms, keys].

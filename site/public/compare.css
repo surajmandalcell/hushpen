@@ -109,7 +109,7 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-
 .cp-list a:hover svg { stroke: var(--ink); }
 
 /* Platform cards on the speech to text page */
-.cp-plat { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; }
+.cp-plat { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; } /* back to repeat(5) when the phone cards return */
 .cp-plat li { display: flex; flex-direction: column; padding: 20px 20px 18px; border-radius: 22px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
 .cp-plat b { font-size: 17px; font-weight: 650; letter-spacing: -.02em; }
 .cp-plat span { display: block; margin-top: 6px; font-size: 14px; line-height: 1.45; color: var(--ink2); }
@@ -157,6 +157,7 @@ a:focus-visible, summary:focus-visible { outline: 2px solid var(--acc); outline-
   .cp-facts, .cp-two, .cp-steps { grid-template-columns: minmax(0, 1fr); }
   .cp-facts { margin-top: 36px; }
   .cp-plat { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cp-plat li:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .cp-s { padding-top: 56px; }
   .cp-faq { padding: 4px 20px; }
   .cp-faq summary { font-size: 16px; }

@@ -1,0 +1,284 @@
+/* Why Hushpen, Free section (.wm-v): "Follow the words". Teams and Slack tiled on a Mac screen, you talk, Hushpen
+   types the cleaned text, then Home counts the words. The world is a 1512 by 945 point Mac screen with no notch.
+   Every window is laid out at true points, and the whole world is shrunk once with CSS zoom (why-m.js), so layout
+   runs at the final size. Hairlines are real borders, never scaled box-shadows. */
+@font-face { font-family: "Lato"; src: url(assets/fonts/lato-400.woff2) format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Lato"; src: url(assets/fonts/lato-700.woff2) format("woff2"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "Lato"; src: url(assets/fonts/lato-900.woff2) format("woff2"); font-weight: 900; font-display: swap; }
+/* A 16:10 screen, not the 4:3 of the other Why boxes. The fill is the wallpaper's sky, so a part pixel at any edge of
+   the moving camera never shows a light line. */
+.why-v.wm-v { aspect-ratio: 1512 / 945; align-self: center; background: #6E9BD6; }
+.hs-st { --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; --app: "Inter", var(--sys); --lato: "Lato", var(--sys);
+  position: absolute; inset: 0; width: auto; height: auto; overflow: hidden; background: none; color: #1C1C1C; font: 400 13px/1.35 var(--sys);
+  text-align: left; letter-spacing: 0; -webkit-font-smoothing: antialiased; }
+/* Zero specificity, so the flow bar's own rules (such as .fb-w margin-top) still win over this reset */
+:where(.hs-st *) { box-sizing: border-box; margin: 0; padding: 0; }
+:where(.hs-st svg) { flex: none; display: block; }
+.hs-world { position: absolute; left: 0; top: 0; width: 1512px; height: 945px; }
+/* The camera: one layer, moved and scaled by one compositor animation (why-m.js) */
+.hs-cam { position: absolute; left: 0; top: 0; width: 1512px; height: 945px; transform-origin: 0 0; will-change: transform; }
+.hs-ov { position: absolute; inset: 0; pointer-events: none; }
+/* White blossoms, the full 4096 pixel file, on its own layer. It bleeds 12 points past every screen edge, so the
+   moving camera never shows a gap at the box edge. */
+.hs-bg { position: absolute; left: -12px; top: -12px; width: 1536px; height: 969px; max-width: none; max-height: none; object-fit: cover; will-change: transform; }
+/* macOS menu bar on a screen with no notch, measured on a real one (NSScreen: 30 points, 13 point menu font):
+   no background (Tahoe draws it clear), dark text over a light wallpaper, the Apple logo at 21, the bold app name
+   at 52, 22 points between titles and between the status icons, the clock 23 points from the right edge */
+.hs-mb { position: absolute; left: 0; top: 0; right: 0; z-index: 8; display: flex; align-items: center; gap: 20px; height: 30px; padding: 0 21px 2px 19px;
+  color: rgba(0, 0, 0, .85); font: 500 13px/16px var(--sys); white-space: nowrap; }
+.hs-mb b { font-weight: 700; margin-left: -2px; }
+.hs-mb .hs-rt { margin-left: auto; display: flex; align-items: center; gap: 22px; }
+.hs-g { position: absolute; inset: 0; }
+
+/* Windows: macOS frame, a hairline drawn inside the shape as a real border, so it snaps and no clip can cut it */
+/* isolation keeps each window's edge line inside its own layer, so it never draws over a window in front */
+.hs-win { position: absolute; isolation: isolate; overflow: hidden; border-radius: 10px; box-shadow: 0 22px 60px rgba(40, 30, 80, .22), 0 6px 16px rgba(40, 30, 80, .1); }
+.hs-win.idle { box-shadow: 0 12px 30px rgba(40, 30, 80, .14), 0 3px 8px rgba(40, 30, 80, .08); }
+.hs-win::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none; z-index: 9; border: 1px solid rgba(0, 0, 0, .2); }
+.hs-tl { position: absolute; z-index: 2; overflow: visible; }
+.hs-win.idle .hs-tl circle { fill: #DDDDDC; stroke: rgba(0, 0, 0, .12); }
+.sk.idle .hs-tl circle { fill: rgba(255, 255, 255, .28); stroke: rgba(0, 0, 0, .1); }
+.hs-av { position: relative; flex: none; display: block; }
+.hs-av img { display: block; width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+/* The SamHQ mark from samhq.app (site.css .mark i): a light rounded square with a black dot, 7/22 radius, 8/22 dot */
+.hs-logo { flex: none; display: grid; place-items: center; background: #F5F5F7; box-shadow: inset 0 0 0 .5px rgba(0, 0, 0, .12); }
+.hs-logo::after { content: ""; width: 36.4%; height: 36.4%; border-radius: 50%; background: #000; }
+.hs-field .hs-txt, .hs-field.in .hs-ph { display: none; }
+.hs-field.in .hs-txt { display: inline; }
+.hs-w { display: inline-block; }
+/* The text caret: 1.5 points in the text color, placed and blinked by why-m.js */
+.hs-field { position: relative; }
+.hs-caret { position: absolute; left: 0; top: 0; width: 1.5px; height: 1.2em; margin-top: .1em; background: currentColor; visibility: hidden; }
+/* The macOS pointer: arrow or I-beam, with its hotspot at the element origin, so a press scales around the tip */
+.hs-ptr { position: absolute; left: 0; top: 0; z-index: 20; transform-origin: 0 0; will-change: transform, opacity; visibility: hidden; }
+.hs-ptr svg { position: absolute; filter: drop-shadow(0 1px 1.2px rgba(0, 0, 0, .4)); }
+.hs-ptr .a { left: -2px; top: -2px; }
+.hs-ptr .i { left: -5.5px; top: -10px; display: none; }
+.hs-ptr.ib .a { display: none; }
+.hs-ptr.ib .i { display: block; }
+.hs-new { opacity: 0; visibility: hidden; will-change: transform, opacity; }
+
+/* Hushpen Home at its real 940 by 600 points, centered on the screen. Measures from the app's pixel baseline. */
+.hs-hp { left: 286px; top: 187px; width: 940px; height: 600px; background: linear-gradient(90deg, #E8E8EA 232px, #F5F5F5 232px); color: #232323; font: 500 14px/20px var(--app); }
+.hs-hp > *, .hp-nav span, .hp-card > * { position: absolute; }
+.hs-hp .hs-tl { left: 20px; top: 20px; }
+.hp-name { left: 68px; top: 15px; font: 600 15px/20px var(--app); }
+.hp-nav span { left: 8px; width: 216px; height: 28px; display: flex; align-items: center; gap: 8px; padding-left: 8px; border-radius: 6px; color: #1F1F20; font: 500 15px/20px var(--app); }
+.hp-nav span.on { background: #D3D3D5; }
+.hp-nav svg { color: #3A3A3C; }
+.hp-h { left: 256px; top: 16px; font: 600 14px/20px var(--app); }
+.hp-card { position: absolute; border: 1px solid #D4D4D4; border-radius: 8px; background: #ECECEC; }
+.hp-st { top: 56px; width: 156px; height: 88px; }
+.hp-lb { left: 12.5px; top: 11px; display: flex; align-items: center; gap: 5px; color: #767676; font: 500 12px/16px var(--app); }
+.hp-v { left: 12px; top: 27px; display: flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.hp-v b { font: 600 25px/30px var(--app); font-variant-numeric: tabular-nums; }
+.hp-v small { color: #767676; font: 500 12px/16px var(--app); }
+.hp-s { left: 12px; top: 60px; color: #767676; font: 500 12px/16px var(--app); white-space: nowrap; }
+.hp-heat { left: 256px; top: 169px; width: 660px; height: 188px; }
+.hp-heat > b { left: 11.5px; top: 9px; font: 600 14px/20px var(--app); }
+.hp-r { right: 13px; color: #767676; font: 500 12px/16px var(--app); font-style: normal; }
+.hp-heat > .hp-r { top: 11px; }
+.hp-heat > .hp-today { top: 159.5px; }
+.hp-grid { left: 11.5px; top: 36px; display: grid; grid-template-columns: repeat(37, 14px); grid-auto-rows: 14px; gap: 3px 3.25px; }
+.hp-grid i { border-radius: 3px; background: #D9D9D9; }
+.hp-grid .l1 { background: #B8D3F0; } .hp-grid .l2 { background: #82B9F5; } .hp-grid .lx { background: none; }
+.hp-leg { left: 11.5px; top: 159.5px; display: flex; align-items: center; gap: 4px; color: #767676; font: 500 12px/16px var(--app); }
+.hp-leg i { width: 10px; height: 10px; border-radius: 2px; background: #D9D9D9; }
+.hp-leg i:first-child { margin-left: 2px; } .hp-leg i:nth-child(2) { background: #479CF9; } .hp-leg i:nth-child(3) { background: #007AFF; margin-right: 2px; }
+.hp-rh { left: 266px; right: 35px; top: 380.5px; display: flex; justify-content: space-between; color: #7A7A7A; font: 600 12px/16px var(--app); }
+.hp-rh span { color: #007AFF; }
+.hp-rec { left: 256px; top: 401px; width: 660px; height: 240px; }
+.hp-rec > p { position: static; height: 48px; padding: 7px 10px 0; border-bottom: 1px solid #D4D4D4; white-space: nowrap; overflow: hidden; }
+.hp-rec b { display: block; font: 500 14px/20px var(--app); }
+.hp-rec span { display: block; color: #767676; font: 500 12px/16px var(--app); }
+
+/* Teams and Slack: each window is laid out at real points, measured on real windows, then scaled as a whole
+   into its 744 by 899 tile. macOS 26 windows: 26 point corners, 14 point traffic lights. */
+.hs-win.tm, .hs-win.sk { border-radius: 19px; }
+.hs-sc { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+/* Microsoft Teams (new Teams, light), laid out 1000 by 1208 points, scaled 0.744 */
+.tm-sc { width: 1000px; height: 1208.4px; transform: scale(.744); display: flex; flex-direction: column; background: #fff; color: #242424; font: 400 13px/18px var(--sys); }
+.tm .hs-tl { left: 14px; top: 14px; }
+.tm-top { position: relative; flex: none; height: 43px; background: #DEDFE0; border-bottom: 1px solid #D1D2D3; color: #616161; }
+.tm-top > span { position: absolute; top: 0; height: 42px; display: flex; align-items: center; }
+.tm-nav { left: 206px; gap: 14px; }
+.tm-nav svg:last-child { color: #B4B4B5; }
+.tm-search { left: 270px; width: 460px; top: 7px !important; height: 28px !important; gap: 17px; padding-left: 22px; border-radius: 6px; background: #fff; color: #A3A3A3; font: 400 12.5px/1 var(--sys); }
+.tm-more { right: 61px; }
+.tm-me { right: 21px; }
+.tm-body { flex: 1; display: flex; min-height: 0; }
+.tm-rail { flex: none; width: 61px; display: flex; flex-direction: column; align-items: center; padding-top: 7px; background: #DEDFE0; border-right: 1px solid #D5D6D7; color: #424242; }
+.tm-rail > span { position: relative; flex: none; width: 60px; height: 50.4px; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.tm-rail small { max-width: 57px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #616161; font: 400 9px/12px var(--sys); letter-spacing: -.1px; }
+.tm-rail .on, .tm-rail .on small { color: #5B5FC7; }
+.tm-rail .on::before { content: ""; position: absolute; left: 2px; top: -4px; width: 3px; height: 43px; border-radius: 2px; background: #5B5FC7; }
+.tm-rail > .tm-rm { height: 30px; }
+.tm-rail > .tm-help { margin-top: auto; height: 36px; }
+.tm-list { flex: none; width: 288px; background: #EFEFF0; border-right: 1px solid #E4E5E5; --rb: #EFEFF0; }
+.tm-lh { height: 54px; display: flex; align-items: center; gap: 11px; padding: 0 19px 0 29px; border-bottom: 1px solid #E4E5E5; color: #424242; }
+.tm-lh b { margin-right: auto; color: #242424; font: 700 17px/22px var(--sys); }
+.tm-cz { display: flex; align-items: center; gap: 2px; }
+.tm-chips { height: 37px; display: flex; align-items: center; gap: 5px; padding-left: 29px; border-bottom: 1px solid #E4E5E5; }
+.tm-chips span { height: 21px; padding: 0 8px; border: 1px solid #D1D1D1; border-radius: 11px; background: #E9E9EA; color: #424242; font: 400 11px/19px var(--sys); }
+.tm-li { height: 32px; display: flex; align-items: center; gap: 11px; padding-left: 29px; color: #242424; }
+.tm-li svg { color: #424242; }
+.tm-li.tm-dr { height: 38px; }
+.tm-sec { height: 36px; display: flex; align-items: center; gap: 2px; padding-left: 15px; color: #424242; font: 400 12.5px/16px var(--sys); }
+.tm-sec.tm-qv { height: 24px; }
+.tm-sec.tm-fav { height: 33px; margin: 7px 14px 0 15px; padding-left: 0; border-top: 1px solid #DCDCDD; }
+.tm-row { position: relative; height: 47px; margin: 0 14px 0 15px; padding: 7px 10px 0 57px; border-radius: 4px; }
+.tm-row.on { background: #fff; --rb: #fff; }
+.tm-row > .hs-av { position: absolute; left: 14px; top: 7.5px; }
+.tm-row b { display: block; padding-right: 64px; font: 400 13px/16px var(--sys); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-row em { position: absolute; right: 10px; top: 7px; color: #616161; font: 400 11px/16px var(--sys); font-style: normal; }
+.tm-row > span:last-child { display: block; margin-top: 1px; color: #616161; font: 400 11.5px/14px var(--sys); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Round avatars with Teams' presence ring (status unknown): a white dot with a gray rim, cut out of the background */
+.tm .hs-av { border-radius: 50%; }
+.tm .hs-av i { position: absolute; right: -1px; bottom: -1px; width: 10px; height: 10px; border-radius: 50%; background: #fff; border: 1px solid #616161; box-shadow: 0 0 0 1.5px var(--rb, #fff); }
+.tm-me .hs-av i { display: none; }
+.tm-ini { display: grid; place-items: center; font: 600 12px/1 var(--sys); letter-spacing: .2px; }
+.tm-meet { width: 32px; height: 32px; background: #D3D4F5; color: #5B5FC7; }
+.tm-conv { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #fff; }
+.tm-ch { position: relative; flex: none; height: 54px; display: flex; align-items: center; padding-left: 17px; border-bottom: 1px solid #E0E0E0; color: #616161; }
+.tm-ch b { margin: 0 11px; color: #242424; font: 700 16.5px/22px var(--sys); white-space: nowrap; }
+.tm-tab { position: relative; height: 53px; display: flex; align-items: center; margin-right: 16px; color: #424242; font: 400 13px/18px var(--sys); }
+.tm-tab.on { color: #242424; font-weight: 600; }
+.tm-tab.on::after { content: ""; position: absolute; left: 0; right: 0; bottom: 3px; height: 2.5px; border-radius: 2px; background: #5B5FC7; }
+.tm-ci { position: absolute; right: 15px; top: 0; height: 53px; display: flex; align-items: center; gap: 11px; color: #424242; }
+.tm-ci > svg:first-child { margin-right: -5px; }
+/* Teams messages have no bubbles: avatar, a small "Name  time" line, then plain text. Your own carry a purple bar. */
+.tm-msgs { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; padding-right: 40px; overflow: hidden; }
+.tm-m { position: relative; flex: none; padding-left: 58px; margin-top: 20px; }
+.tm-m > .hs-av { position: absolute; left: 15px; top: -1px; }
+.tm-m.me::before { content: ""; position: absolute; left: 5px; top: -1px; bottom: 0; width: 2px; background: #5B5FC7; }
+.tm-nm { color: #616161; font: 400 11px/14px var(--sys); }
+.tm-nm b { margin-right: 8px; color: #242424; font-weight: 600; }
+.tm-m > p:not(.tm-nm) { margin-top: 4px; font: 400 13px/18px var(--sys); }
+.tm-m > .tm-nm + p { margin-top: 2px; }
+.tm-m u { color: #4F52B2; }
+.tm-card { display: flex; width: 414px; height: 86px; margin-top: 6px; border-radius: 4px; overflow: hidden; box-shadow: 0 0 0 1px #E6E6E6, 0 1px 3px rgba(0, 0, 0, .1); }
+.tm-card > i { flex: none; width: 107px; display: grid; place-items: center; background: #C8C8C8; color: #424242; }
+.tm-card > div { min-width: 0; padding: 8px 12px; }
+.tm-card b { display: block; font: 600 12.5px/16px var(--sys); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tm-card p { margin-top: 2px; color: #424242; font: 400 11px/14px var(--sys); }
+.tm-card small { display: block; margin-top: 6px; color: #616161; font: 400 10.5px/14px var(--sys); }
+.tm-cmp { position: relative; flex: none; display: flex; align-items: center; height: 38px; margin: 20px 68px 23px 67px; padding-left: 13px; border: 1px solid #E0E0E0; border-radius: 4px; background: #fff; color: #616161; }
+/* Focus: Teams (Fluent 2 textarea) draws a 2 point brand underline that grows out from the center in 200 ms and
+   drops in 50 ms on blur. why-m.js sets --f from 0 to 1. Only paint changes, never the size. */
+.tm-cmp::after { content: ""; position: absolute; left: -1px; right: -1px; bottom: -1px; height: 2px; border-radius: 0 0 4px 4px; background: #5B5FC7; transform: scaleX(var(--f, 0)); }
+.tm-cmp .hs-field { flex: 1; min-width: 0; color: #242424; white-space: nowrap; }
+.tm-cmp .hs-ph { color: #616161; }
+.tm-ic { display: flex; gap: 11px; }
+.tm-div { flex: none; width: 1px; height: 20px; margin: 0 8px 0 10px; background: #E0E0E0; }
+.tm-send { margin-right: 11px; }
+.tm-cmp.has .tm-send { color: #5B5FC7; }
+
+/* Slack (2025 design, DMs view), laid out 1040 by 1257 points, scaled 0.7154. The whole frame is aubergine:
+   the title bar darkens to the right, the rail and the list darken downward. */
+.sk-sc { width: 1040px; height: 1256.6px; transform: scale(.71538); color: #fff; font: 400 15px/22px var(--lato);
+  background: linear-gradient(90deg, rgba(50, 4, 51, 0) 30%, rgba(50, 4, 51, .45)) 0 0 / 100% 40px no-repeat, linear-gradient(180deg, #4A154B, #3B083C); }
+.sk .hs-tl { left: 12px; top: 12px; }
+.sk-top > span { position: absolute; top: 11px; display: flex; align-items: center; color: rgba(255, 255, 255, .85); }
+.sk-sb { left: 81px; }
+.sk-nav { left: 188px; gap: 15px; }
+.sk-nav svg:nth-child(2) { opacity: .5; }
+.sk-top > .sk-search { left: 285px; top: 6px; width: 470px; height: 28px; gap: 7px; padding-left: 11px; border-radius: 6px; background: #714575; font: 400 13px/1 var(--lato); }
+.sk-top > .sk-app { left: 767px; top: 9px; width: 22px; height: 22px; border-radius: 6px; background: conic-gradient(#E01E5A 0 25%, #ECB22E 0 50%, #2EB67D 0 75%, #36C5F0 0); box-shadow: inset 0 0 0 2.5px #fff; }
+.sk-top > .sk-help { left: auto; right: 11px; }
+.sk-rail { position: absolute; left: 0; top: 40px; bottom: 0; width: 70px; display: flex; flex-direction: column; align-items: center; padding: 7px 0 22px; font: 700 11px/13px var(--lato); text-align: center; }
+.sk-rail > .sk-ws { position: relative; height: 63px; }
+.sk-ws::before { content: ""; position: absolute; left: -19px; top: 15px; width: 6px; height: 6px; border-radius: 50%; background: #E9DCEA; }
+.sk-ws::after { content: ""; position: absolute; left: 4px; top: 36px; width: 28px; height: 7px; border-radius: 0 0 5px 5px; background: rgba(255, 255, 255, .28); }
+.sk-rail > span:not(.sk-ws, .sk-me) { flex: none; height: 68px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.sk-rail > span > i { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 8px; }
+.sk-rail > span.on > i { background: rgba(255, 255, 255, .35); }
+.sk-rail .sk-rb { display: grid; place-items: center; width: 36px; height: 36px; margin-bottom: 16px; border-radius: 50%; background: rgba(255, 255, 255, .2); }
+.sk-rail .sk-rb.first { margin-top: auto; }
+.sk-rail > .sk-me { height: 36px; --sb: #3B083C; }
+.sk-pane { position: absolute; left: 70px; top: 40px; right: 2px; bottom: 2px; display: flex; border-radius: 8px 4px 24px 0; overflow: hidden; }
+.sk-side { flex: none; width: 272px; background: linear-gradient(180deg, #5B2B5C, #4F2051); --sb: #5B2B5C; }
+.sk-sh { height: 50px; display: flex; align-items: center; gap: 6px; padding: 0 12px 0 16px; }
+.sk-sh b { font: 700 18px/24px var(--lato); }
+.sk-sh span { margin-left: auto; font-size: 0; }
+.sk-tg { position: relative; width: 28px; height: 17px; margin: 0 8px 0 4px; border-radius: 9px; border: 1.5px solid rgba(255, 255, 255, .75); }
+.sk-tg::after { content: ""; position: absolute; left: 2px; top: 2px; width: 10px; height: 10px; border-radius: 50%; background: rgba(255, 255, 255, .85); }
+.sk-find { height: 26px; margin: 0 9px 6px 8px; display: flex; align-items: center; gap: 7px; padding-left: 9px; border-radius: 6px; background: #6E4271; box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .2); color: rgba(255, 255, 255, .75); font: 400 13px/1 var(--lato); }
+.sk-dm { position: relative; padding: 12px 17px 16px 60px; border-bottom: 1px solid rgba(255, 255, 255, .22); }
+.sk-dm.on { background: #693C6B; --sb: #693C6B; }
+.sk-dm > .hs-av { position: absolute; left: 16px; top: 15px; }
+.sk-dm b { display: block; padding-right: 82px; overflow: hidden; text-overflow: ellipsis; font: 700 15px/22px var(--lato); white-space: nowrap; }
+.sk-dm b span { font-weight: 400; }
+.sk-dm em { position: absolute; right: 17px; top: 12px; color: rgba(255, 255, 255, .7); font: 400 13px/22px var(--lato); font-style: normal; }
+.sk-dm p { color: rgba(255, 255, 255, .88); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.sk .hs-av { border-radius: 8px; }
+.sk .hs-av i { position: absolute; right: -3px; bottom: -3px; width: 11px; height: 11px; border-radius: 50%; background: #2BAC76; border: 2px solid var(--sb, #fff); }
+.sk-main { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #fff; color: #1D1C1D; }
+.sk-ch { position: relative; flex: none; height: 48px; display: flex; align-items: center; padding-left: 22px; }
+.sk-ch .hs-av { margin: 0 8px 0 9px; border-radius: 6px; }
+.sk-ch b { font: 900 18px/24px var(--lato); white-space: nowrap; }
+.sk-ch-r { position: absolute; right: 18px; top: 13px; display: flex; align-items: center; gap: 12px; color: #1D1C1D; }
+.sk-ch-r svg:nth-child(2) { margin-left: -6px; }
+.sk-tabs { flex: none; display: flex; gap: 4px; height: 40px; padding-left: 16px; border-bottom: 1px solid #DDDDDD; font: 400 13px/1 var(--lato); }
+.sk-tabs span { position: relative; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+.sk-tabs .on { font-weight: 700; }
+.sk-tabs .on::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 2px; background: #611F69; }
+.sk-msgs { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 20px 8px; overflow: hidden; }
+.sk-intro { display: flex; align-items: center; gap: 12px; }
+.sk-intro .hs-av { border-radius: 12px; }
+.sk-intro b { font: 900 18px/24px var(--lato); }
+.sk-about { margin: 18px 0 12px; font: 400 16px/24px var(--lato); }
+.sk-about u { padding: 0 2px; border-radius: 3px; background: rgba(29, 155, 209, .1); color: #1264A3; text-decoration: none; }
+.sk-vp { align-self: flex-start; height: 36px; padding: 0 12px; border: 1px solid #BBBBBB; border-radius: 8px; font: 700 15px/34px var(--lato); }
+.sk-day { display: flex; align-items: center; margin: 20px -20px 8px; }
+.sk-day::before, .sk-day::after { content: ""; flex: 1; height: 1px; background: #DDDDDD; }
+.sk-day span { height: 28px; padding: 0 16px; border: 1px solid #DDDDDD; border-radius: 14px; font: 700 13px/26px var(--lato); }
+/* A Slack message: the name line's top meets the avatar's top; name and text are each one 22 point line */
+.sk-m { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; }
+.sk-m .hs-av { width: 36px; height: 36px; }
+.sk-m > div { min-width: 0; }
+.sk-m p { font: 400 15px/22px var(--lato); }
+.sk-m p:first-child { margin-top: -2px; font-weight: 900; }
+.sk-m p:first-child em { margin-left: 8px; color: #616061; font: 400 12px/22px var(--lato); font-style: normal; }
+/* Rest border 30% ink (#BBB, sampled on slack.com shots); focus is Slack's high foreground token, #868686 */
+/* The box, top to bottom: the formatting toolbar on light gray, the text line, then the action row. The field
+   comes first in the markup (why-m.js reads it there), so the toolbar is moved up with order. */
+.sk-cmp { flex: none; display: flex; flex-direction: column; height: 117px; margin: 12px 22px 25px 20px; border: 1px solid #C6C6C6; border-radius: 8px; overflow: hidden; color: #5E5D60; }
+.sk-cmp.foc { border-color: #868686; }
+.sk-cmp .hs-field { flex: none; display: block; height: 37px; padding: 7px 13px 0; color: #1D1C1D; font: 400 15px/22px var(--lato); white-space: nowrap; overflow: hidden; }
+.sk-cmp .hs-ph { color: #868686; }
+.sk-tb { order: -1; flex: none; height: 40px; display: flex; align-items: center; padding-left: 1px; background: #F8F8F8; color: #454245; font: 400 19px/1 var(--lato); }
+.sk-tb > b, .sk-tb > svg { flex: none; width: 32px; display: grid; place-items: center; text-align: center; }
+.sk-tb > b { font-weight: 400; }
+.sk-tb > b:first-child { font-weight: 700; }
+.sk-tb .it { font-style: italic; } .sk-tb .un { text-decoration: underline; } .sk-tb .st { text-decoration: line-through; }
+.sk-tb > b:nth-child(5) { width: 46px; display: flex; align-items: center; justify-content: center; gap: 2px; }
+.sk-tb > svg { width: 20px; margin: 0 6px; }
+.sk-tb > i, .sk-bot > i { flex: none; width: 1px; height: 20px; margin: 0 2px 0 7px; background: #DDDDDD; }
+.sk-bot { flex: none; height: 38px; display: flex; align-items: center; padding: 0 6px 0 7px; color: #454245; font: 400 17px/1 var(--lato); }
+.sk-bot > svg { margin: 0 6px; }
+.sk-bot .sk-plus { display: grid; place-items: center; width: 26px; height: 26px; margin-right: 1px; border-radius: 50%; background: #F0F0F0; }
+.sk-aa { width: 32px; text-align: center; text-decoration: underline; }
+.sk-bot > i { margin: 0 5px; }
+.sk-send { margin-left: auto; display: flex; align-items: center; height: 28px; border-radius: 4px; color: #ABABAB; }
+.sk-send span { display: grid; place-items: center; width: 30px; height: 28px; }
+.sk-send span:last-child { width: 24px; }
+.sk-send i { width: 1px; height: 18px; background: #DDDDDD; }
+.sk-cmp.has .sk-send { background: #007A5A; color: #fff; }
+.sk-cmp.has .sk-send i { background: rgba(255, 255, 255, .3); }
+
+/* The flow bar where Hushpen puts it: centered, its bottom 32 points above the screen's bottom (core flow_bar.rs
+   EDGE_MARGIN_BOTTOM). It eases its own width between states, as the app does; its height and center stay put. */
+.hs-fb { position: absolute; left: 0; right: 0; bottom: 32px; height: 28px; display: grid; place-items: center; z-index: 5; }
+.hs-fb .fb { box-shadow: inset 0 0 0 .5px #353535, 0 6px 18px rgba(20, 20, 40, .28), 0 1px 3px rgba(20, 20, 40, .2); }
+
+/* What you say, outside the camera in box pixels so it stays readable. The bubble sits over a screen point that
+   why-m.js maps through the camera, just above the pill. Words stream in one by one,
+   then the fillers turn red and drop out. */
+.hs-say { position: absolute; transform: translate(-50%, -100%); width: max-content; max-width: 46%; padding: 8px 14px 10px; border-radius: 12px; opacity: 0; visibility: hidden;
+  background: rgba(28, 28, 30, .88); color: #fff; font: 500 14px/20px var(--sys); text-align: center; box-shadow: 0 8px 24px rgba(20, 20, 40, .25);
+  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+.hs-say .hs-w.now { color: #64D2FF; }
+.hs-say.cut .f { color: #FF8F87; text-decoration: line-through; text-decoration-thickness: 2px; }
+.hs-say.drop .f { display: none; }
+@media (max-width: 600px) { .hs-say { font-size: 11px; line-height: 15px; padding: 5px 9px 7px; border-radius: 9px; } }

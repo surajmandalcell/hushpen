@@ -39,7 +39,6 @@
 {"@type":"Question","name":"Is there free speech to text for Mac?","acceptedAnswer":{"@type":"Answer","text":"Yes. Hushpen is a free, open source dictation app for Macs with Apple silicon and macOS 13 or later. It types what you say into any app, and it has no subscription, no account and no word limit."}},
 {"@type":"Question","name":"Is there free offline speech to text for Windows?","acceptedAnswer":{"@type":"Answer","text":"Yes. Hushpen runs on Windows x64 as a preview, with no admin rights needed. Speech models run on your computer, so dictation works offline after you download a model."}},
 {"@type":"Question","name":"Does speech to text work offline on Linux?","acceptedAnswer":{"@type":"Answer","text":"Yes. Hushpen runs on Linux x64 and arm64 with an X11 session and a Vulkan or OpenGL driver. On Wayland, the global key and paste are not available. Dictation itself runs on your computer."}},
-{"@type":"Question","name":"Can I use Hushpen for speech to text on iPhone or Android?","acceptedAnswer":{"@type":"Answer","text":"Not yet. The iOS and Android apps are coming soon. The Android app is a keyboard with a voice bar, and dictation runs on the phone."}},
 {"@type":"Question","name":"What is whisper.cpp?","acceptedAnswer":{"@type":"Answer","text":"whisper.cpp is an open source program that runs OpenAI's Whisper speech models on ordinary computers. Hushpen uses it to run the Whisper models, so speech turns into text on your own machine."}}
 ]}
 ]}
@@ -80,13 +79,15 @@
 
   <section class="cp-s" aria-labelledby="systems">
     <h2 id="systems">Speech to text <span>on every system.</span></h2>
-    <p>One app for Mac, Windows and Linux, right now. Phone apps are on the way.</p>
+    <p>One app for Mac, Windows and Linux, right now. <!-- archived 2026-11-22: phone app, bring back later. Was: Phone apps are on the way. --></p>
     <ul class="cp-body cp-plat">
       <li><b>Mac</b><span>Apple silicon. macOS 13 or later. Signed and notarized.</span><a class="go" data-asset="macos-dmg" href="https://github.com/surajmandalcell/hushpen/releases/latest">Download for Mac</a></li>
       <li><b>Windows</b><span>x64, in preview. No admin rights needed.</span><a class="go" data-asset="windows-setup" href="https://github.com/surajmandalcell/hushpen/releases">Download for Windows</a></li>
       <li><b>Linux</b><span>X11 desktops, x64 and arm64. AppImage, deb, rpm and tar.gz.</span><a class="go" data-linux-download href="https://github.com/surajmandalcell/hushpen/releases/latest">Download for Linux</a></li>
+      <!-- archived 2026-11-22: phone app, bring back later
       <li><b>iPhone</b><span>A keyboard that listens in the Hushpen app.</span><span class="go soon">Coming soon</span></li>
       <li><b>Android</b><span>A full keyboard with a voice bar. Dictation runs on the phone.</span><span class="go soon">Coming soon</span></li>
+      -->
     </ul>
   </section>
 
@@ -121,7 +122,9 @@
       <details class="faq" open><summary>Is there free speech to text for Mac?</summary><p>Yes. Hushpen is a free, open source dictation app for Macs with Apple silicon and macOS 13 or later. It types what you say into any app, and it has no subscription, no account and no word limit.</p></details>
       <details class="faq"><summary>Is there free offline speech to text for Windows?</summary><p>Yes. Hushpen runs on Windows x64 as a preview, with no admin rights needed. Speech models run on your computer, so dictation works offline after you download a model.</p></details>
       <details class="faq"><summary>Does speech to text work offline on Linux?</summary><p>Yes. Hushpen runs on Linux x64 and arm64 with an X11 session and a Vulkan or OpenGL driver. On Wayland, the global key and paste are not available. Dictation itself runs on your computer.</p></details>
+      <!-- archived 2026-11-22: phone app, bring back later. Its JSON-LD entry was removed.
       <details class="faq"><summary>Can I use Hushpen for speech to text on iPhone or Android?</summary><p>Not yet. The iOS and Android apps are coming soon. The Android app is a keyboard with a voice bar, and dictation runs on the phone.</p></details>
+      -->
       <details class="faq"><summary>What is whisper.cpp?</summary><p>whisper.cpp is an open source program that runs OpenAI's Whisper speech models on ordinary computers. Hushpen uses it to run the Whisper models, so speech turns into text on your own machine.</p></details>
     </div>
   </section>
