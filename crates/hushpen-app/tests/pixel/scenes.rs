@@ -112,8 +112,10 @@ pub struct Shot {
 pub enum Scene {
     /// The shell with its sidebar and title bar around a placeholder view.
     Shell,
-    /// Home with the dictation and microphone panels the app attaches.
+    /// Home with about eight months of seeded dictations and the default speech model.
     Home,
+    /// Home on first run: no history and no speech model.
+    HomeEmpty,
     Onboarding(Step),
     Capabilities(Platform),
     /// Onboarding reopened by a revoked macOS permission.
@@ -353,6 +355,7 @@ impl Scene {
         match self {
             Scene::Shell => "shell".into(),
             Scene::Home => "home".into(),
+            Scene::HomeEmpty => "home-empty".into(),
             Scene::Onboarding(step) => format!("onboarding-{}", step.key()),
             Scene::Capabilities(Platform::Windows) => "onboarding-windows-permissions".into(),
             Scene::Capabilities(_) => "onboarding-wayland-permissions".into(),
@@ -393,7 +396,7 @@ impl Scene {
     }
 
     pub fn shell_and_onboarding() -> Vec<Scene> {
-        let mut scenes = vec![Scene::Shell, Scene::Home];
+        let mut scenes = vec![Scene::Shell, Scene::Home, Scene::HomeEmpty];
         scenes.extend(Step::ALL.into_iter().map(Scene::Onboarding));
         scenes.push(Scene::PermissionsChanged);
         scenes.extend([
@@ -466,6 +469,7 @@ impl Scene {
             self,
             Scene::Shell
                 | Scene::Home
+                | Scene::HomeEmpty
                 | Scene::Menu(_)
                 | Scene::Onboarding(_)
                 | Scene::Capabilities(_)
@@ -686,6 +690,151 @@ fn stage_add_sheet(
 
 /// The newest transcript, in Unix milliseconds: 2025-06-01 09:15 UTC.
 const FIRST_AT: i64 = 1_748_769_300_000;
+
+/// The day Home takes as today in every capture: Thursday 2026-11-19, in days since 1970.
+pub const SHOWCASE_TODAY: i64 = 20_776;
+const MINUTE_MS: i64 = 60_000;
+
+/// Everyday dictations for the Home history: messages, notes, code requests, and searches.
+const EVERYDAY: [&str; 30] = [
+    "Sounds good, let's move the review to Thursday afternoon so everyone has time to read the draft first.",
+    "Can you send me the latest version of the slides when you get a chance? I want to check the numbers on page four.",
+    "Reminder to renew the car insurance before the end of the month and compare at least two other quotes.",
+    "Refactor this function so it returns early when the list is empty, and add a short comment explaining why.",
+    "Thanks for the quick turnaround on this, it looks great. Only small thing is the logo feels a bit too big on mobile.",
+    "Meeting notes: launch moves one week, design review on Monday, and support needs the new help articles by Friday.",
+    "best noise cancelling headphones for long flights under three hundred dollars",
+    "Write a unit test for the date parser that covers leap years, empty input, and a time zone offset.",
+    "Hey, are we still on for dinner on Saturday? I can book the table for seven if that works for you.",
+    "The build is green again. The failure was a flaky network test, so I added a retry and opened a ticket to fix it properly.",
+    "Idea for the blog post: what we learned from moving our whole team to async standups for three months.",
+    "Please review the pull request when you have a minute, the main change is in the upload queue.",
+    "Pick up the dry cleaning, buy printer paper, and call the dentist to move the appointment to next week.",
+    "how long to boil eggs for soft yolk",
+    "I looked into the slow page load. Most of the time goes to three large images, so I will compress them and lazy load the rest.",
+    "Happy birthday! Hope you have a relaxing day and that someone else does the dishes tonight.",
+    "Add a dark mode toggle to the settings screen and remember the choice after a restart.",
+    "Quick update: the client approved the new timeline, so we can start the second phase on Monday.",
+    "Book ideas for the trip: a light novel, something about history, and one cookbook for inspiration.",
+    "Let me know if you need anything else from my side before the release goes out tomorrow morning.",
+    "Rename the variable to something clearer and split the long condition into two named checks.",
+    "Weekly goals: finish the onboarding flow, write the release notes, and clean up the old feature flags.",
+    "weather this weekend in the mountains",
+    "I'm running a few minutes late, grab a seat and I'll be there by quarter past.",
+    "Summary of the customer call: they love the export feature but want a way to schedule it every Monday.",
+    "Draft reply: thanks for reaching out, we are looking into it and will get back to you by end of day.",
+    "Move the retry logic into its own helper so the upload and download paths can share it.",
+    "Shopping list: coffee beans, oat milk, bananas, pasta, and something nice for dessert.",
+    "Great question. The short answer is yes, but it needs a small change to how we store the settings.",
+    "Note to self: the second draft reads much better when the summary comes first and the details after.",
+];
+const APPS: [&str; 9] = [
+    "Slack", "Mail", "Notes", "Cursor", "Chrome", "Messages", "Notion", "Linear", "Obsidian",
+];
+/// The five newest dictations, which the Recent group shows: (minute of today, app, text).
+const RECENT_ROWS: [(i64, &str, &str); 5] = [
+    (
+        9 * 60 + 57,
+        "Chrome",
+        "best hiking trails near the coast with easy parking and a short loop",
+    ),
+    (
+        10 * 60 + 21,
+        "Notes",
+        "Groceries for the weekend: oat milk, sourdough, two avocados, coffee beans, and something for dessert.",
+    ),
+    (
+        10 * 60 + 48,
+        "Cursor",
+        "Add a retry with exponential backoff to the upload function and log the final error if all three attempts fail.",
+    ),
+    (
+        11 * 60 + 5,
+        "Mail",
+        "Hi team, attached is the updated launch checklist. Please flag anything that looks off by Friday.",
+    ),
+    (
+        11 * 60 + 32,
+        "Slack",
+        "Running about ten minutes late for standup, start without me and I'll catch up on the notes after.",
+    ),
+];
+
+/// About eight months of everyday use for Home: a slow start, more days and words each month, a
+/// 12-day streak up to today, and a few dictations this morning. A fixed seed keeps it the same.
+fn seed_showcase(storage: &Storage) {
+    let mut seed: u64 = 0x5eed_2026;
+    let mut next = move |below: i64| {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (seed >> 33) as i64 % below
+    };
+    let mut count = 0;
+    let mut save = |at: i64, app: &str, text: &str, wpm: i64| {
+        let words = history::word_count(Some(text));
+        let row = Row {
+            id: format!("home-{count}"),
+            created_at: at,
+            kind: "dictation".into(),
+            status: "completed".into(),
+            duration_ms: words * MINUTE_MS / wpm,
+            model_id: Some(hushpen_core::catalog::SPEECH_UNIFIED.into()),
+            language_detected: Some("en".into()),
+            raw_text: Some(text.to_owned()),
+            rule_text: Some(text.to_owned()),
+            final_text: Some(text.to_owned()),
+            insert_outcome: Some("pasted".into()),
+            target_app: Some(app.to_owned()),
+            ..Row::default()
+        };
+        count += 1;
+        history::save(&storage.database, &row, &[]).expect("save a transcript");
+        words
+    };
+    for back in (0..238).rev() {
+        let day = SHOWCASE_TODAY - back;
+        let weekend = (day + 3).rem_euclid(7) >= 5;
+        let weeks = back / 7;
+        // The current streak is 12 days; an earlier run of 19 days is the best.
+        let chance = match (back, weekend) {
+            (0..12, _) | (40..59, _) => 100,
+            (12 | 39 | 59, _) => 0,
+            (_, true) if weeks > 20 => 10,
+            (_, true) => 35,
+            _ if weeks > 26 => 35,
+            _ if weeks > 16 => 60,
+            _ if weeks > 8 => 80,
+            _ => 90,
+        };
+        if next(100) >= chance {
+            continue;
+        }
+        let mut target = (150 + (33 - weeks) * 18) * (30 + next(170)) / 100;
+        if weekend {
+            target /= 2;
+        }
+        // This morning stops before the Recent rows; the rest of a day ends by 19:30.
+        let (mut minute, end) = if back == 0 {
+            (8 * 60 + 20, 9 * 60 + 50)
+        } else {
+            (8 * 60 + next(60), 19 * 60 + 30)
+        };
+        let start = day * 86_400_000;
+        let mut words = 0;
+        while words < target && minute < end {
+            let text = EVERYDAY[next(EVERYDAY.len() as i64) as usize];
+            let app = APPS[next(APPS.len() as i64) as usize];
+            words += save(start + minute * MINUTE_MS, app, text, 130 + next(40));
+            minute += 4 + next(46);
+        }
+        if back == 0 {
+            for (minute, app, text) in RECENT_ROWS {
+                save(start + minute * MINUTE_MS, app, text, 130 + next(40));
+            }
+        }
+    }
+}
 
 fn seed_history(storage: &Storage) {
     // The seeded transcripts are old; the default retention would take their audio.
@@ -1084,7 +1233,12 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
             .expect("open the storage"),
     );
     let mac = matches!(scene, Scene::PermissionsChanged);
+    hushpen_app::home::PIXEL_TODAY.store(SHOWCASE_TODAY, std::sync::atomic::Ordering::Relaxed);
     match scene {
+        Scene::Home => {
+            seed_model(&storage);
+            seed_showcase(&storage);
+        }
         Scene::Onboarding(step) => storage
             .settings
             .set_internal("onboarding.step", json!(step.key()))
@@ -1149,6 +1303,10 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
             seed_devices(&storage)
         }
         // Automatic names the CPU count, which differs between machines.
+        Scene::Menu(_) => storage
+            .settings
+            .set("engine.threads", json!(4))
+            .expect("store the thread count"),
         Scene::Settings(shot) => {
             storage
                 .settings
@@ -1495,7 +1653,7 @@ pub fn capture_at(scene: Scene, appearance: Appearance, height: f32) -> Shot {
 fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: Scene) {
     match scene {
         Scene::Shell => click(cx, handle, "sidebar.history"),
-        Scene::Home | Scene::Onboarding(_) | Scene::Capabilities(_) => {}
+        Scene::Home | Scene::HomeEmpty | Scene::Onboarding(_) | Scene::Capabilities(_) => {}
         Scene::PermissionsChanged => {
             // A stored grant that reads missing counts as lost only after the start reads
             // settle for 2 s on a timer; the repair page opens then. The headless executor
@@ -1535,9 +1693,10 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "history.row.0");
         }
         Scene::Dictionary => click(cx, handle, "sidebar.dictionary"),
-        Scene::Files(FilesShot::Empty) => click(cx, handle, "sidebar.files"),
+        // Manual has no sidebar row: it opens from the Transcribe and Read aloud tabs.
+        Scene::Files(FilesShot::Empty) => click(cx, handle, "files.mode.transcribe"),
         Scene::Files(FilesShot::DragOver) => {
-            click(cx, handle, "sidebar.files");
+            click(cx, handle, "files.mode.transcribe");
             let event = FileDropEvent::Entered {
                 position: point(
                     px(space::WINDOW_WIDTH / 2.0),
@@ -1558,7 +1717,7 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             | FilesShot::ReadKokoroMix
             | FilesShot::ReadKokoroMixMenu),
         ) => {
-            click(cx, handle, "sidebar.files");
+            click(cx, handle, "files.mode.readAloud");
             click(cx, handle, "read.text");
             // The text area lets go of the focus, so the baseline shows it at rest.
             cx.update_window(handle, |_, window, cx| {
@@ -1572,7 +1731,7 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             }
         }
         Scene::Files(FilesShot::Queue) => {
-            click(cx, handle, "sidebar.files");
+            click(cx, handle, "files.mode.transcribe");
             // The jobs run on threads and report through a channel: wait for the third file
             // to end, then give the running one time to report its 40%.
             for _ in 0..50 {
@@ -1621,6 +1780,8 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             cx.run_until_parked();
         }
         Scene::Menu(shot) => {
+            // The dictation group with its language menu sits at the top of Settings.
+            click(cx, handle, "sidebar.settings");
             click(cx, handle, "home.language");
             // The search field of the open menu already has the focus.
             let query = match shot {
@@ -1683,11 +1844,11 @@ fn drive(cx: &mut HeadlessAppContext, handle: gpui_kit::AnyWindowHandle, scene: 
             click(cx, handle, "dictionary.pack.tech-terms.preview");
         }
         Scene::Voices => {
-            click(cx, handle, "sidebar.files");
+            click(cx, handle, "files.mode.readAloud");
             click(cx, handle, "read.manage");
         }
         Scene::VoicesAdd => {
-            click(cx, handle, "sidebar.files");
+            click(cx, handle, "files.mode.readAloud");
             click(cx, handle, "read.manage");
             click(cx, handle, "voices.add");
         }

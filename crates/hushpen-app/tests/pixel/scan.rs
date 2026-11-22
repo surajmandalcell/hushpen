@@ -90,6 +90,10 @@ fn color_owners(nodes: &[Node]) -> Vec<(String, Rect)> {
             || node.focused
             // A drop zone lights up in the accent while files are dragged over the window.
             || node.id.ends_with(".drop")
+            // The Home words-per-day map shades each day in the accent.
+            || node.id == "home.map"
+            // A running Transcribe file draws its progress ring in the accent.
+            || node.id.starts_with("import.progress.")
             || node.id.contains("status")
             || node.id.contains(".state.");
         if allowed {
@@ -372,8 +376,9 @@ const TITLE_MAX: f32 = 13.0 * 1.3 + 1.0;
 const SECONDARY_MAX: f32 = 11.0 * 1.3 + 1.0;
 /// Rows that hold more than a line by design: the text areas of Read aloud and of the cleanup
 /// prompt, the lines to read for Find best settings and for Add Voice, and the pairing code and number.
-const TALL_ROWS: [&str; 6] = [
+const TALL_ROWS: [&str; 7] = [
     "read.text",
+    "home.transcript",
     "settings.cleanup.prompt.text",
     "enhance.reading",
     "voices.reading",

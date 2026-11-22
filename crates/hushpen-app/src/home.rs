@@ -41,6 +41,11 @@ const CELL_STEP: f32 = 14.0;
 const COPIED_FOR: Duration = Duration::from_millis(1500);
 const ROW_GROUP: &str = "home-recent-row";
 
+/// The day the pixel baselines take as today (0: the real today), so a Home render with seeded
+/// history does not move with the date.
+#[cfg(feature = "pixel-tests")]
+pub static PIXEL_TODAY: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(0);
+
 pub enum HomeRequest {
     ShowHistory,
     Open(String),
@@ -94,6 +99,14 @@ impl Home {
         let db = &history.storage().database;
         let days = history::daily_totals(db);
         let today = history::today(db);
+        #[cfg(feature = "pixel-tests")]
+        let today =
+            today.map(
+                |today| match PIXEL_TODAY.load(std::sync::atomic::Ordering::Relaxed) {
+                    0 => today,
+                    pinned => pinned,
+                },
+            );
         let page = history::page(db, "", None, RECENT * 4);
         self.seen = Some(key);
         match (days, today) {

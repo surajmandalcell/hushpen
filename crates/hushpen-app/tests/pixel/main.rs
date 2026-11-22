@@ -196,7 +196,15 @@ fn assert_shell_tokens(
     assert_eq!(hex_at(image, 26, 26), "#FF5F57", "{name}: close light");
     assert_eq!(hex_at(image, 46, 26), "#FEBC2E", "{name}: minimize light");
     let selection = over(selection, sidebar_base);
-    for (index, view) in View::ALL.into_iter().enumerate() {
+    // Manual has no sidebar row; Home stays selected while it shows.
+    let selected = selected.map(|view| {
+        if view == View::Manual {
+            View::Home
+        } else {
+            view
+        }
+    });
+    for (index, view) in View::SIDEBAR.into_iter().enumerate() {
         let (x, y) = nav_fill_point(index as u32);
         let want = if Some(view) == selected {
             selection.clone()
@@ -281,7 +289,7 @@ fn selected_view(scene: Scene) -> Option<View> {
             Some(View::History)
         }
         Scene::HistoryClear | Scene::HistoryRead | Scene::HistoryReadDetail => Some(View::History),
-        Scene::Home | Scene::Menu(_) => Some(View::Home),
+        Scene::Home | Scene::HomeEmpty => Some(View::Home),
         Scene::Dictionary => Some(View::Dictionary),
         Scene::CleanupProfile => Some(View::Settings),
         Scene::Files(_) => Some(View::Manual),
@@ -301,7 +309,7 @@ fn selected_view(scene: Scene) -> Option<View> {
         | Scene::DevicesAdd(_)
         | Scene::DevicesDetail => None,
         Scene::About | Scene::AboutBottom | Scene::AboutChecked => Some(View::About),
-        Scene::Settings(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {
+        Scene::Settings(_) | Scene::Menu(_) | Scene::EndpointFailure | Scene::ShortcutRecorder => {
             Some(View::Settings)
         }
         Scene::Onboarding(_) | Scene::PermissionsChanged | Scene::Capabilities(_) => None,
