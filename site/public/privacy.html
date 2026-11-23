@@ -29,15 +29,15 @@
 <script src="/os.js" defer></script>
 <script src="/vendor/alpine-3.14.9.min.js" defer></script>
 <script type="application/ld+json">
-{"@context":"https://schema.org","@type":"WebPage","@id":"https://hushpen.samhq.app/privacy#page","url":"https://hushpen.samhq.app/privacy","name":"Hushpen Privacy Policy","inLanguage":"en","isPartOf":{"@id":"https://hushpen.samhq.app/#website"},"about":{"@id":"https://hushpen.samhq.app/#app"},"author":{"@type":"Person","@id":"https://hushpen.samhq.app/#author","name":"Suraj Mandal","url":"https://mandalsuraj.com"},"dateModified":"2026-11-12"}
+{"@context":"https://schema.org","@type":"WebPage","@id":"https://hushpen.samhq.app/privacy#page","url":"https://hushpen.samhq.app/privacy","name":"Hushpen Privacy Policy","inLanguage":"en","isPartOf":{"@id":"https://hushpen.samhq.app/#website"},"about":{"@id":"https://hushpen.samhq.app/#app"},"author":{"@type":"Person","@id":"https://hushpen.samhq.app/#author","name":"Suraj Mandal","url":"https://mandalsuraj.com"},"dateModified":"2026-11-23"}
 </script>
 </head>
 <body>
 <main class="pg doc">
   <nav class="pg-nav"><a href="/"><img src="/assets/icon-256.webp" alt="">Hushpen</a><a class="dl" data-dl href="https://github.com/surajmandalcell/hushpen/releases/latest">Download</a></nav>
   <h1>Privacy policy. <span>Hushpen collects nothing that identifies you.</span></h1>
-  <p class="stamp">Last updated 21 November 2026. This policy covers the Hushpen apps for iPhone, iPad, Mac, Windows and Linux, and this website.</p>
-  <p class="lede">Hushpen has no accounts, no ads and no tracking. Your voice and text never leave your device. The developer receives no personal data from the apps. On a computer, once a day, Hushpen sends one anonymous number with its update check: how often you used it and which models. You can turn it off in Settings.</p>
+  <p class="stamp">Last updated 23 November 2026. This policy covers Hushpen 2.5.0, the apps for iPhone, iPad, Mac, Windows and Linux, and this website.</p>
+  <p class="lede">Hushpen has no accounts, no ads and no tracking. Your voice and text never leave your device. The developer receives no personal data from the apps. On a computer, if you turn on update checks, Hushpen sends one anonymous number once a day: how often you used it and which models. You can turn it off in Settings.</p>
 
   <h2>What stays on your device</h2>
   <ul class="bul">
@@ -50,7 +50,7 @@
   <h2>What uses the network</h2>
   <ul class="bul">
     <li><strong>Model downloads.</strong> When you tap Download, Hushpen fetches a speech or voice model from huggingface.co. Hushpen checks each file against a fixed SHA-256 checksum. It sends no account, identifier or content. Like any web host, Hugging Face sees the address of the request.</li>
-    <li><strong>Updates on Mac, Windows and Linux.</strong> The app asks github.com for a signed update notice. This is off until you turn it on. Update checks send the app name, platform, and version. The first check of each day also sends one number for the day before: how many times you dictated, transcribed a file, or used read aloud (up to 1,023), and which speech, cleanup, and voice models you used. Settings &gt; Updates &gt; See what's sent shows the exact request. Turn off Share anonymous usage, and the number is not sent. We count requests per day and keep no IP address and no id. Updates on iPhone and iPad come from the App Store; that app does not check for updates itself.</li>
+    <li><strong>Updates on Mac, Windows and Linux.</strong> The app asks github.com for a signed update notice. The automatic check is off until you turn it on. Check for Updates in About runs one check when you press it, and leaves the switch off. The request to GitHub carries no identifier. While the automatic check is on, each check also sends the app name, platform, and version to the developer's own update server, apps.mandalsuraj.com. The first check of each day also sends one number for the day before: how many times you dictated, transcribed a file, or used read aloud (up to 1,023), and which speech, cleanup, and voice models you used. Settings &gt; Updates &gt; See what's sent shows the exact request. Turn off Share anonymous usage, and the number is not sent. We count requests per day and keep no IP address and no id. Updates on iPhone and iPad come from the App Store; that app does not check for updates itself.</li>
     <li><strong>Your own devices.</strong> Pairing and Server Mode connect devices you choose, over your local network, or on a computer over your own Tailscale or SSH link. The connection uses Noise encryption. No Hushpen server takes part.</li>
     <li><strong>AI cleanup on a computer.</strong> This is off until you enter a server address in Settings. Then Hushpen sends the dictated text to that server. Choose a server you trust; this policy cannot cover it.</li>
   </ul>
@@ -81,19 +81,22 @@
   <p>Everything the apps keep is on your device, so there is nothing for the developer to delete. Deleting Hushpen from an iPhone or iPad removes its models, settings and pairing keys. On a computer, delete entries in History, or delete the app's data folder; About shows where it is. To withdraw a permission, turn it off in your system settings. To forget a paired computer, use Devices in Hushpen.</p>
 
   <h2>Third parties</h2>
-  <p>Hushpen relies on three outside services. Hugging Face hosts the model files. GitHub hosts the source code, the issue tracker and the update notices. Cloudflare hosts this website. No third-party code inside the apps collects data. The libraries the apps use are listed under Open-source licenses in the app and on <a href="https://github.com/surajmandalcell/hushpen/blob/master/assets/THIRD-PARTY-NOTICES.html">GitHub</a>.</p>
+  <p>Hushpen relies on three outside services. Hugging Face hosts the model files. GitHub hosts the source code, the issue tracker and the update notices. Cloudflare hosts this website. Each has its own privacy policy, and the developer does not control them. No third-party code inside the apps collects data. The libraries the apps use are listed under Open-source licenses in the app and on <a href="https://github.com/surajmandalcell/hushpen/blob/master/assets/THIRD-PARTY-NOTICES.html">GitHub</a>.</p>
 
   <h2>Check it yourself</h2>
   <p>Hushpen is open source under AGPL-3.0-or-later. Everything on this page can be checked in the <a href="https://github.com/surajmandalcell/hushpen">source code</a>.</p>
+
+  <h2>Warranty and liability</h2>
+  <p>Hushpen is free and comes as is, with no warranty. The developer is not liable for any loss or damage that comes from using it, and you are responsible for how you use it. The <a href="/terms">terms of use</a> say this in full.</p>
 
   <h2>Changes</h2>
   <p>A change to this policy appears on this page with a new date. The full history is public in the project's repository.</p>
 
   <h2>Contact</h2>
-  <p>Hushpen is made by Suraj Mandal. Ask a question or report a problem by <a href="https://github.com/surajmandalcell/hushpen/issues">opening an issue on GitHub</a>. Do not put recordings or private text in it. More help is on the <a href="/support">support page</a>.</p>
+  <p>Hushpen is made by Suraj Mandal (<a href="https://samhq.app">SamHQ</a>). Ask a question or report a problem by <a href="https://github.com/surajmandalcell/hushpen/issues">opening an issue on GitHub</a>. Do not put recordings or private text in it. More help is on the <a href="/support">support page</a>.</p>
 
-  <p class="pg-links"><a href="/">Home</a><a href="/support">Support</a><a href="/press/">Press kit</a><a href="/about">About</a><a href="https://github.com/surajmandalcell/hushpen">GitHub</a></p>
-  <p class="pg-foot">© 2026 Suraj Mandal</p>
+  <p class="pg-links"><a href="/">Home</a><a href="/support">Support</a><a href="/terms">Terms</a><a href="/press/">Press kit</a><a href="/about">About</a><a href="https://github.com/surajmandalcell/hushpen">GitHub</a></p>
+  <p class="pg-foot">© 2026 Suraj Mandal · <a href="https://samhq.app" target="_blank" rel="noopener">Made by SamHQ</a></p>
 </main>
 </body>
 </html>
