@@ -91,7 +91,7 @@ Or [download the `.dmg`](https://github.com/surajmandalcell/hushpen/releases/lat
 Then open Hushpen and:
 
 1. Press **Allow** for **Microphone** and **Accessibility**. Allow **Input Monitoring** too if it is off.
-2. Press **Download**. Hushpen starts with Parakeet v3 (416 MB, one time). You can switch to any other model in **Models**.
+2. Press **Download**. Hushpen starts with Nemotron Unified (939 MB, one time). You can switch to any other model in **Models**.
 3. Click in any app where you can type. Press **Option + Tab**, say something, and press **Option + Tab** again to stop.
 
 You can also hold **Right Option** while you talk, and let go to stop.
@@ -117,7 +117,7 @@ Or download a file from the [latest release](https://github.com/surajmandalcell/
 | Debian and Ubuntu | `sudo apt install ./Hushpen-*-linux-x64.deb` |
 | Fedora and openSUSE | `sudo dnf install ./Hushpen-*-linux-x64.rpm` |
 
-Then open Hushpen and press **Download**. Hushpen starts with Parakeet v3 (416 MB, one time), and you can switch to any other model in **Models**. Click in any app, double tap **Right Alt** (or press **Right Alt + Space**), talk, and press **Right Alt** again to stop. You can also hold **Right Alt** while you talk, and let go to stop.
+Then open Hushpen and press **Download**. Hushpen starts with Nemotron Unified (939 MB, one time), and you can switch to any other model in **Models**. Click in any app, double tap **Right Alt** (or press **Right Alt + Space**), talk, and press **Right Alt** again to stop. You can also hold **Right Alt** while you talk, and let go to stop.
 
 > [!NOTE]
 > On Wayland, the key and the paste do not work. Use an X11 session.
@@ -131,6 +131,32 @@ The source apps add voice keyboards and can serve speech models to paired deskto
 Android can serve in the background; iOS Server mode requires the app to stay open.
 The phone screens use basic placeholders. See the [phone build guide](mobile/README.md) for setup and limits.
 
+## Screenshots
+
+Home, Models, History, Dictionary, Transcribe, and Settings. Click one to see it full size.
+
+**Mac**
+
+<p>
+<a href="assets/readme/shots/mac/home-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/home-dark.webp"><img src="assets/readme/shots/mac/home-light.webp" alt="Home on Mac" width="140"></picture></a>
+<a href="assets/readme/shots/mac/models-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/models-dark.webp"><img src="assets/readme/shots/mac/models-light.webp" alt="Models on Mac" width="140"></picture></a>
+<a href="assets/readme/shots/mac/history-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/history-dark.webp"><img src="assets/readme/shots/mac/history-light.webp" alt="History on Mac" width="140"></picture></a>
+<a href="assets/readme/shots/mac/dictionary-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/dictionary-dark.webp"><img src="assets/readme/shots/mac/dictionary-light.webp" alt="Dictionary on Mac" width="140"></picture></a>
+<a href="assets/readme/shots/mac/transcribe-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/transcribe-dark.webp"><img src="assets/readme/shots/mac/transcribe-light.webp" alt="Transcribe on Mac" width="140"></picture></a>
+<a href="assets/readme/shots/mac/settings-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/settings-dark.webp"><img src="assets/readme/shots/mac/settings-light.webp" alt="Settings on Mac" width="140"></picture></a>
+</p>
+
+**Linux**
+
+<p>
+<a href="assets/readme/shots/linux/home-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/home-dark.webp"><img src="assets/readme/shots/linux/home-light.webp" alt="Home on Linux" width="140"></picture></a>
+<a href="assets/readme/shots/linux/models-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/models-dark.webp"><img src="assets/readme/shots/linux/models-light.webp" alt="Models on Linux" width="140"></picture></a>
+<a href="assets/readme/shots/linux/history-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/history-dark.webp"><img src="assets/readme/shots/linux/history-light.webp" alt="History on Linux" width="140"></picture></a>
+<a href="assets/readme/shots/linux/dictionary-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/dictionary-dark.webp"><img src="assets/readme/shots/linux/dictionary-light.webp" alt="Dictionary on Linux" width="140"></picture></a>
+<a href="assets/readme/shots/linux/transcribe-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/transcribe-dark.webp"><img src="assets/readme/shots/linux/transcribe-light.webp" alt="Transcribe on Linux" width="140"></picture></a>
+<a href="assets/readme/shots/linux/settings-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/settings-dark.webp"><img src="assets/readme/shots/linux/settings-light.webp" alt="Settings on Linux" width="140"></picture></a>
+</p>
+
 ## Learn more
 
 <details>
@@ -138,11 +164,12 @@ The phone screens use basic placeholders. See the [phone build guide](mobile/REA
 
 <br>
 
-Hushpen starts with Parakeet v3 Q4. You can switch to any other model in the **Models** view.
+Hushpen starts with Nemotron Labs Unified ASR 0.6B Q8. You can switch to any other model in the **Models** view.
 
 | Model | Size | Good for |
 | --- | --- | --- |
-| Parakeet v3 Q4 | 416 MB | English and 24 other European languages. Hushpen starts with this one. |
+| Nemotron Labs Unified ASR 0.6B Q8 | 939 MB | Live text as you talk, in English and 24 other European languages. Hushpen starts with this one. |
+| Parakeet v3 Q4 | 416 MB | The same 25 languages, and faster on long audio files. |
 | Whisper Large v3 Turbo Q5 | 574 MB | Hindi and other languages Parakeet does not know. |
 | Whisper Small Q5 | 190 MB | Translating speech to English. |
 | Whisper Base Q5 | 60 MB | Older or slower computers. |
