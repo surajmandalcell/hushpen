@@ -29,7 +29,9 @@
   const hl = id => {
     svg.classList.toggle('dim', !!id); key.classList.toggle('dim', !!id);
     for (const s of S) { L[s.id].g.classList.toggle('on', s.id === id); gL.appendChild(L[s.id].g); }
-    key.querySelectorAll('li').forEach(li => li.classList.toggle('on', li.dataset.s === id));
+    // .r: the row sits in the right half, so its model tooltip opens leftward and stays on screen
+    const kr = key.getBoundingClientRect();
+    key.querySelectorAll('li').forEach(li => { const r = li.getBoundingClientRect(); li.classList.toggle('on', li.dataset.s === id); li.classList.toggle('r', r.left + r.width / 2 - kr.left > kr.width / 2); });
     if (id) gL.appendChild(L[id].g);
   };
   const over = e => { const t = e.target.closest('[data-s]'); if (t) hl(t.dataset.s); };

@@ -58,6 +58,13 @@
 .cmp-key li { transition: opacity .22s ease, color .22s ease; -webkit-tap-highlight-color: transparent; }
 .cmp-key.dim li:not(.on) { opacity: .38; }
 .cmp-key.dim li.on { color: var(--ink); }
+/* The real model name of a legend row shows above it while its line is picked (hover, or tap on a phone). */
+.cmp-key li[data-m] { position: relative; cursor: default; }
+.cmp-key li[data-m]::after { content: attr(data-m); position: absolute; left: -6px; bottom: calc(100% + 6px); z-index: 2; padding: 4px 8px; border-radius: 7px; background: #1C1C1E; color: #fff; font-size: 12px; font-weight: 500; white-space: nowrap; pointer-events: none; opacity: 0; transform: translateY(2px); transition: opacity .18s ease, transform .18s ease; }
+.cmp-key li.on[data-m]::after { opacity: 1; transform: none; }
+.cmp-key li.r[data-m]::after { left: auto; right: -6px; }
+/* Coral marks the reading rule, so nobody reads a low line as a bad result. #C2452D on the tint is 4.5:1. */
+.cmp-low { display: inline-block; padding: 0 7px; border-radius: 6px; background: #FFF0EA; color: #C2452D; font-weight: 600; white-space: nowrap; }
 /* Zoom label over the chart: two stacked spans crossfade; its height is kept, so nothing moves. */
 .cmp-cap { position: relative; height: 20px; margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--ink2); }
 @media (prefers-reduced-motion: reduce) { .cmp-cap { display: none; } }
