@@ -94,8 +94,16 @@ impl<'a> Windows<'a> {
         let window = Window {
             start,
             end,
-            keep_from: if start == 0 { 0 } else { start + self.overlap / 2 },
-            keep_to: if last { usize::MAX } else { end - self.overlap / 2 },
+            keep_from: if start == 0 {
+                0
+            } else {
+                start + self.overlap / 2
+            },
+            keep_to: if last {
+                usize::MAX
+            } else {
+                end - self.overlap / 2
+            },
         };
         Ok(Some((window, &self.buffer[..len])))
     }

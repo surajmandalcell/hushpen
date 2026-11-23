@@ -273,7 +273,10 @@ mod tests {
         let choose = |setting, locales: &[&str]| {
             select_live_language(setting, || locales.iter().map(|s| s.to_string()))
         };
-        assert_eq!(choose("auto", &["en-IN", "en-US", "xx-XX"]).as_deref(), Some("en"));
+        assert_eq!(
+            choose("auto", &["en-IN", "en-US", "xx-XX"]).as_deref(),
+            Some("en")
+        );
         assert_eq!(choose("auto", &["en-IN", "de-DE"]), None);
         assert_eq!(choose("auto", &["ja-JP"]), None);
         assert_eq!(choose("auto", &[]), None);
