@@ -7,7 +7,7 @@
   const whenSeen = (el, fn) => { const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); fn(); } }, { threshold: 0.3 }); io.observe(el); };
   window.HP = { calm, sleep, whenSeen };
 
-  const GH = 'https://github.com/surajmandalcell/hushpen';
+  const GH = 'https://github.com/samhqapp/hushpen';
   document.querySelectorAll('[data-gh]').forEach(a => { a.href = GH; });
   const LX = ['AppImage', 'deb', 'rpm', 'tar.gz'];
   document.querySelectorAll('[data-lx]').forEach(el => {

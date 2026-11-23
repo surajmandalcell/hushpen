@@ -25,7 +25,7 @@ sudo apt install build-essential clang libclang-dev cmake pkg-config \
 ## Build
 
 ```sh
-git clone https://github.com/surajmandalcell/hushpen.git
+git clone https://github.com/samhqapp/hushpen.git
 cd hushpen
 cargo build --release --locked -p hushpen-app -p hushpen-engine -p hushpen-llm -p hushpen-tts
 cp assets/ggml-silero-v5.1.2.bin "${CARGO_TARGET_DIR:-target}/release/"

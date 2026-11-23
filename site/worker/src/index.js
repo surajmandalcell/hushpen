@@ -1,4 +1,4 @@
-const API = 'https://api.github.com/repos/surajmandalcell/hushpen/releases';
+const API = 'https://api.github.com/repos/samhqapp/hushpen/releases';
 const HEADERS = { 'User-Agent': 'Hushpen-site', Accept: 'application/vnd.github+json' };
 const KINDS = [
   ['macos-dmg', /-macos-arm64\.dmg$/], ['macos-zip', /-macos-arm64\.zip$/],

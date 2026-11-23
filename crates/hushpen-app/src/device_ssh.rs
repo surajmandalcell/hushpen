@@ -532,7 +532,7 @@ fn script(source: &Source) -> io::Result<String> {
             format!(
                 r#"version={}
 name="Hushpen-$version-host-linux-$arch.tar.gz"
-base="https://github.com/surajmandalcell/hushpen/releases/download/v$version"
+base="https://github.com/samhqapp/hushpen/releases/download/v$version"
 curl --fail --location --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 150 "$base/$name" -o "$stage/host.tar.gz"
 curl --fail --location --proto '=https' --tlsv1.2 --connect-timeout 10 --max-time 30 "$base/SHA256SUMS" -o "$stage/SHA256SUMS"
 sum=$(awk -v name="$name" '$2 == name {{print $1}}' "$stage/SHA256SUMS")

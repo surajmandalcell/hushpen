@@ -15,9 +15,9 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/surajmandalcell/hushpen/releases/latest"><b>Download</b></a> &nbsp;·&nbsp;
+  <a href="https://github.com/samhqapp/hushpen/releases/latest"><b>Download</b></a> &nbsp;·&nbsp;
   <a href="https://hushpen.samhq.app/">Website</a> &nbsp;·&nbsp;
-  <a href="https://github.com/surajmandalcell/hushpen/issues">Report a problem</a>
+  <a href="https://github.com/samhqapp/hushpen/issues">Report a problem</a>
 </p>
 
 <p align="center">
@@ -86,7 +86,7 @@ Run this in Terminal:
 curl -fsSL https://hushpen.samhq.app/install.sh | sh
 ```
 
-Or [download the `.dmg`](https://github.com/surajmandalcell/hushpen/releases/latest), open it, and drag **Hushpen** to **Applications**.
+Or [download the `.dmg`](https://github.com/samhqapp/hushpen/releases/latest), open it, and drag **Hushpen** to **Applications**.
 
 Then open Hushpen and:
 
@@ -109,7 +109,7 @@ Run this in a terminal:
 curl -fsSL https://hushpen.samhq.app/install.sh | sh
 ```
 
-Or download a file from the [latest release](https://github.com/surajmandalcell/hushpen/releases/latest). Use `arm64` instead of `x64` on an Arm machine.
+Or download a file from the [latest release](https://github.com/samhqapp/hushpen/releases/latest). Use `arm64` instead of `x64` on an Arm machine.
 
 | Your system | Command |
 | --- | --- |
@@ -203,7 +203,7 @@ tccutil reset Accessibility io.github.surajmandalcell.hushpen
 You need [Rust](https://rustup.rs), CMake, and a C and C++ compiler. Then run:
 
 ```sh
-git clone https://github.com/surajmandalcell/hushpen.git
+git clone https://github.com/samhqapp/hushpen.git
 cd hushpen
 cargo build --release --locked -p hushpen-app -p hushpen-engine -p hushpen-llm -p hushpen-tts
 ```
@@ -216,7 +216,7 @@ The first build takes several minutes. See [docs/building.md](docs/building.md) 
 
 <p align="center">
   Open source apps can look this good. If you agree, a star on GitHub helps more people find Hushpen.<br>
-  <a href="https://github.com/surajmandalcell/hushpen"><b>⭐ Star Hushpen on GitHub</b></a>
+  <a href="https://github.com/samhqapp/hushpen"><b>⭐ Star Hushpen on GitHub</b></a>
 </p>
 
 ## License

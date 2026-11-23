@@ -21,7 +21,7 @@ use std::time::Duration;
 
 /// The release feed. GitHub answers it with a redirect to the newest release asset.
 pub const FEED_URL: &str =
-    "https://github.com/surajmandalcell/hushpen/releases/latest/download/latest.json";
+    "https://github.com/samhqapp/hushpen/releases/latest/download/latest.json";
 
 /// The shared update API of the apps. The only file that names this host is this one (net-audit).
 const COUNT_URL: &str = "https://apps.mandalsuraj.com/v1/hushpen/latest";

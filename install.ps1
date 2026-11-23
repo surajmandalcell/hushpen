@@ -8,7 +8,7 @@ function Install-Hushpen {
         throw 'Hushpen needs x64 Windows.'
     }
 
-    $repo = 'surajmandalcell/hushpen'
+    $repo = 'samhqapp/hushpen'
     $headers = @{ 'User-Agent' = 'Hushpen installer' }
     $release = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases/latest" -Headers $headers -TimeoutSec 30
     if ($release.draft -or $release.prerelease -or -not ($release.assets | Where-Object { $_.name -like '*-windows-x64-setup.exe' })) {

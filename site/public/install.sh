@@ -4,7 +4,7 @@
 # HUSHPEN_INSTALL_DIR sets where the app goes. HUSHPEN_NO_OPEN=1 skips opening it.
 set -eu
 
-repo=surajmandalcell/hushpen
+repo=samhqapp/hushpen
 
 say() { printf '%s\n' "$*"; }
 fail() { printf 'Hushpen install: %s\n' "$*" >&2; exit 1; }

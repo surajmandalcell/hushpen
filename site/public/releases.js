@@ -1,6 +1,6 @@
 // One request and one store for the page and its animated release views.
 (() => {
-  const GH = 'https://github.com/surajmandalcell/hushpen/releases';
+  const GH = 'https://github.com/samhqapp/hushpen/releases';
   const listeners = [];
   let data = null;
   const size = bytes => bytes ? `${(bytes / 1000000).toFixed(1).replace(/\.0$/, '')} MB` : '';

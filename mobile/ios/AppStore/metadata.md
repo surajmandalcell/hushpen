@@ -71,7 +71,7 @@ ABOUT FULL ACCESS
 The keyboard asks for Full Access for one reason: to receive the text Hushpen makes and put it in the app you are typing in. The keyboard has no network code. Full Access never sends what you type anywhere.
 
 Hushpen needs iOS 26 or later and 60 to 574 MB of storage for a speech model. Questions, bugs, and ideas: hushpen.samhq.app/support
-Source code: github.com/surajmandalcell/hushpen
+Source code: github.com/samhqapp/hushpen
 ```
 
 ## Version fields
@@ -144,7 +144,7 @@ Contact: Suraj Mandal, `surajmandalcell@gmail.com`.
 Notes (4000):
 
 ```
-Hushpen is a free, open source dictation app. There is no account or login. All speech recognition runs on the device. Source: https://github.com/surajmandalcell/hushpen
+Hushpen is a free, open source dictation app. There is no account or login. All speech recognition runs on the device. Source: https://github.com/samhqapp/hushpen
 
 To review the main feature (about 3 minutes):
 1. Open Hushpen. On Home, tap Speech Model, then tap the download button for "Whisper Base Q5" (60 MB). Wait until it shows "In use".

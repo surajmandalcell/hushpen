@@ -17,7 +17,7 @@ use gpui_kit::{
 /// The rows of the links group, top to bottom, with the short address shown on the right.
 const LINKS: [(Target, &str, Option<&str>); 5] = [
     (Target::Website, "Website", Some("hushpen.samhq.app")),
-    (Target::Github, "GitHub", Some("surajmandalcell/hushpen")),
+    (Target::Github, "GitHub", Some("samhqapp/hushpen")),
     (Target::Issues, "Report an issue", None),
     (Target::Licenses, "Open-source licenses", None),
     (Target::LogFolder, "Open log folder", None),

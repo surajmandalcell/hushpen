@@ -24,7 +24,7 @@ version = "2.5.0"
 edition = "2024"
 rust-version = "1.99"
 license = "AGPL-3.0-or-later"
-repository = "https://github.com/surajmandalcell/hushpen"
+repository = "https://github.com/samhqapp/hushpen"
 publish = false
 
 [workspace.dependencies]

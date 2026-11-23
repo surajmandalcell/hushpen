@@ -120,7 +120,7 @@
   // out and in the Light theme: github.com's markup and CSS values, at their real sizes
   const TABS = ['Code', 'Issues', 'Pull requests', 'Actions', 'Projects'];
   const AV = `<svg class="rl-av" viewBox="0 0 20 20" aria-hidden="true"><rect width="20" height="20" rx="3"/><path transform="translate(2.5 2.5) scale(.625)" d="${MKP}"/></svg>`;
-  const asset = kind => `<li class="rl-ro${kind === 'linux-x64-appimage' ? ' gh-pick' : ''}" data-ln-asset="${kind}"><div class="rl-r1">${oc('pkg', 'rl-ic')}<a href="https://github.com/surajmandalcell/hushpen/releases/latest"><b>Latest version</b></a></div>
+  const asset = kind => `<li class="rl-ro${kind === 'linux-x64-appimage' ? ' gh-pick' : ''}" data-ln-asset="${kind}"><div class="rl-r1">${oc('pkg', 'rl-ic')}<a href="https://github.com/samhqapp/hushpen/releases/latest"><b>Latest version</b></a></div>
     <div class="rl-r2"><div class="rl-sh"><span class="rl-tr"><span></span></span><i class="rl-cp">${oc('copy')}</i></div><span class="rl-sz"></span><span class="rl-dt"></span></div></li>`;
   const page = () => `<div class="gh"><div class="rl-pg">
     <header class="rl-hd"><span class="rl-lg">${GH24}</span><span class="ln-sp"></span><span class="rl-bt">${oc('person')}</span><span class="rl-bt rl-tg">${oc('bars')}</span></header>
@@ -137,8 +137,8 @@
   </div></div>`;
 
   const ff = r => `<div class="ln-win ln-ff" style="${pos(r)}">
-    <div class="ff-tabs">${ib('fxv')}<span class="ff-tab">${GHM('ff-fav')}<span data-ln-tab>Latest version · surajmandalcell/hushpen · GitHub</span>${g('x')}</span>${ib('plus')}<span class="ln-sp"></span>${ib('chev', ' ff-lt')}${WC}</div>
-    <div class="ff-nav">${ib('back')}${ib('fwd', ' ln-off')}${ib('reload')}<span class="ff-url">${g('lock')}<span data-ln-url><b>github.com</b>/surajmandalcell/hushpen/releases/latest</span></span><span class="ln-ib ff-dlb">${g('dl')}<i class="ff-dlp"><b></b></i></span>${ib('acct', ' ff-ac')}${ib('menu')}</div>
+    <div class="ff-tabs">${ib('fxv')}<span class="ff-tab">${GHM('ff-fav')}<span data-ln-tab>Latest version · samhqapp/hushpen · GitHub</span>${g('x')}</span>${ib('plus')}<span class="ln-sp"></span>${ib('chev', ' ff-lt')}${WC}</div>
+    <div class="ff-nav">${ib('back')}${ib('fwd', ' ln-off')}${ib('reload')}<span class="ff-url">${g('lock')}<span data-ln-url><b>github.com</b>/samhqapp/hushpen/releases/latest</span></span><span class="ln-ib ff-dlb">${g('dl')}<i class="ff-dlp"><b></b></i></span>${ib('acct', ' ff-ac')}${ib('menu')}</div>
     ${page()}
     <div class="ff-pop"><div class="ff-it">${fi('exe')}<div class="ff-tx"><b data-ln-file>${FILE}</b><i class="ff-bar"><b></b></i><span class="ff-st">Starting…</span></div></div><div class="ff-pf">Show all downloads</div></div>
   </div>`;
@@ -369,7 +369,7 @@
     }
     host.querySelectorAll('[data-ln-tag]').forEach(el => { el.textContent = stable.tag; });
     host.querySelector('[data-ln-title]').textContent = `Hushpen ${stable.version}`;
-    host.querySelector('[data-ln-tab]').textContent = `Release Hushpen ${stable.version} · surajmandalcell/hushpen · GitHub`;
+    host.querySelector('[data-ln-tab]').textContent = `Release Hushpen ${stable.version} · samhqapp/hushpen · GitHub`;
     host.querySelector('[data-ln-url]').textContent = stable.notesUrl.replace('https://', '');
     host.querySelector('[data-ln-published]').textContent = `released ${stable.publishedAt.slice(0, 10)}`;
     const note = host.querySelector('[data-ln-highlight]');

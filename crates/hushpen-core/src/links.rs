@@ -8,10 +8,10 @@ pub const SITE_URL: &str = "https://hushpen.samhq.app/";
 pub const BENCHMARKS_URL: &str = "https://hushpen.samhq.app/benchmarks";
 
 /// The repository.
-pub const REPO_URL: &str = "https://github.com/surajmandalcell/hushpen";
+pub const REPO_URL: &str = "https://github.com/samhqapp/hushpen";
 
 /// Where "Report an issue" goes.
-pub const ISSUES_URL: &str = "https://github.com/surajmandalcell/hushpen/issues";
+pub const ISSUES_URL: &str = "https://github.com/samhqapp/hushpen/issues";
 
 #[cfg(test)]
 mod tests {
@@ -20,7 +20,7 @@ mod tests {
     #[test]
     fn the_project_urls_are_these_constants() {
         assert_eq!(SITE_URL, "https://hushpen.samhq.app/");
-        assert_eq!(REPO_URL, "https://github.com/surajmandalcell/hushpen");
+        assert_eq!(REPO_URL, "https://github.com/samhqapp/hushpen");
         assert_eq!(ISSUES_URL, format!("{REPO_URL}/issues"));
         assert_eq!(BENCHMARKS_URL, format!("{SITE_URL}benchmarks"));
     }
