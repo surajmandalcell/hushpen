@@ -56,7 +56,9 @@ impl LiveSpan for Span {
         if field.moved_caret.is_some() || field.text != self.expected {
             return Err(LiveError::Changed);
         }
-        field.text.replace_range(BEFORE.len() + start..BEFORE.len() + end, with);
+        field
+            .text
+            .replace_range(BEFORE.len() + start..BEFORE.len() + end, with);
         field.edits.push((start, with.into()));
         self.expected.clone_from(&field.text);
         Ok(())

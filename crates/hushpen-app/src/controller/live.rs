@@ -112,7 +112,11 @@ impl Draft {
         let Ok(span) = &mut self.span else { return };
         for (done, edit) in edits.iter().rev().enumerate() {
             if let Err(error) = span.splice(edit.range.start, edit.range.end, edit.with) {
-                self.span = Err(if done == 0 { error } else { LiveError::Uncertain });
+                self.span = Err(if done == 0 {
+                    error
+                } else {
+                    LiveError::Uncertain
+                });
                 return;
             }
             self.typed.replace_range(edit.range.clone(), edit.with);

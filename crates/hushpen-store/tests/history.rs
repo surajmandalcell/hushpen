@@ -432,8 +432,15 @@ fn daily_totals_fill_from_old_rows_count_new_ones_and_survive_clear_all() {
 
     let db = Database::open(&path).unwrap();
     let days = history::daily_totals(&db).unwrap();
-    assert_eq!(days.len(), 1, "the upgrade fills the day of the old dictation");
-    assert_eq!((days[0].words, days[0].dictations, days[0].speech_ms), (3, 1, 3000));
+    assert_eq!(
+        days.len(),
+        1,
+        "the upgrade fills the day of the old dictation"
+    );
+    assert_eq!(
+        (days[0].words, days[0].dictations, days[0].speech_ms),
+        (3, 1, 3000)
+    );
 
     history::save(&db, &dictation("N1", noon + 1, "four five"), &[]).unwrap();
     let stored = history::delete(&db, "N1").unwrap().unwrap();

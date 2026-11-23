@@ -330,13 +330,22 @@ mod tests {
         };
         assert_eq!(stored(json!({SPEECH_KEY: ""})), json!(SPEECH_DEFAULT));
         assert_eq!(stored(json!({})), json!(SPEECH_DEFAULT));
-        assert_eq!(stored(json!({SPEECH_KEY: "small-q5_1"})), json!("small-q5_1"));
+        assert_eq!(
+            stored(json!({SPEECH_KEY: "small-q5_1"})),
+            json!("small-q5_1")
+        );
         // A fresh install stores no choice, so the catalog default (Nemotron Unified) applies.
         let root = tempfile::tempdir().unwrap();
-        assert_eq!(SettingsStore::open(root.path()).unwrap().get(SPEECH_KEY), Some(json!("")));
+        assert_eq!(
+            SettingsStore::open(root.path()).unwrap().get(SPEECH_KEY),
+            Some(json!(""))
+        );
         // Once migrated, an empty choice stays empty.
         let bytes = json!({"schemaVersion": 6, "values": {SPEECH_KEY: ""}}).to_string();
-        assert_eq!(parse(bytes.as_bytes(), Os::Mac).unwrap().0.values[SPEECH_KEY], json!(""));
+        assert_eq!(
+            parse(bytes.as_bytes(), Os::Mac).unwrap().0.values[SPEECH_KEY],
+            json!("")
+        );
     }
 
     fn stored_hands_free(version: i64, values: Value, os: Os) -> Value {
