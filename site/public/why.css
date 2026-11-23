@@ -68,17 +68,18 @@
 /* Rival lines: one gray at lower opacity; a picked rival comes up to full. */
 .cmp-plot .ser.rv path, .cmp-plot .ser.rv circle { stroke-opacity: .55; fill-opacity: .55; transition: stroke-opacity .22s ease, fill-opacity .22s ease; }
 .cmp-plot .ser.rv.on path, .cmp-plot .ser.rv.on circle { stroke-opacity: 1; fill-opacity: 1; }
+/* End labels at the 30 minute dots, and the gap block in the empty top-left (white halo keeps it readable over grid lines). */
+.cmp-plot .end { fill: var(--ink2); font-weight: 500; }
+.cmp-plot .end.us { fill: #007AFF; font-weight: 600; }
+.cmp-plot .end.n { font-weight: 700; }
+.cmp-plot .gap-br { stroke: #007AFF; }
+.cmp-plot .gap-big { fill: #007AFF; font-family: system-ui, -apple-system, var(--app); font-weight: 800; letter-spacing: -.045em; }
+.cmp-plot .gap-sub, .cmp-plot .gap-row { fill: var(--ink); font-weight: 600; letter-spacing: -.01em; }
+.cmp-plot .gap-row { font-weight: 500; }
 .cmp-plot .gap-n { fill: #007AFF; font-weight: 700; }
-.cmp-plot .gap-s { fill: var(--ink2); }
-/* Zoom label over the chart: two stacked spans crossfade; its height is kept, so nothing moves. */
-.cmp-cap { position: relative; height: 20px; margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--ink2); }
-@media (prefers-reduced-motion: reduce) { .cmp-cap { display: none; } }
-.cmp-cap span { position: absolute; inset: 0 auto auto 0; opacity: 0; transform: translateY(3px); transition: opacity .35s ease, transform .45s cubic-bezier(.2, .8, .2, 1); }
-.cmp-cap span.in { opacity: 1; transform: none; }
 .cmp-foot { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.5; color: var(--ink2); }
 @media (max-width: 720px) {
   .cmp-card { margin-top: 24px; padding: 18px 12px 16px; border-radius: 22px; }
   .cmp-plot svg { aspect-ratio: 20 / 19; }
-  .cmp-cap { margin-left: 4px; font-size: 12px; }
   .cmp-foot { font-size: 13px; }
 }
