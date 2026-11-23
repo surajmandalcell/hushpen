@@ -41,7 +41,7 @@ hushpen-speech = { path = "crates/hushpen-speech" }
 hushpen-store = { path = "crates/hushpen-store" }
 hushpen-testhook = { path = "crates/hushpen-testhook" }
 # Crash reports that wait for Send (MIT, the owner's own crate).
-indiecrumb = { git = "https://github.com/samhqapp/indiecrumb-rs", tag = "v0.2.1", features = ["crash", "feedback", "ureq", "gpui"] }
+indiecrumb = { git = "https://github.com/samhqapp/indiecrumb-rs", tag = "v0.3.0", features = ["crash", "feedback", "ureq", "gpui"] }
 
 # UI.
 gpui-pre = "=0.3.7"

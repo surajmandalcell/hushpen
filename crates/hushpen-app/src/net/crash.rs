@@ -1,6 +1,7 @@
-//! Crash reports, ask first. A panic writes one file under `<data>/indiecrumb/crashes/`; the next
-//! launch shows it in the "Hushpen Quit Unexpectedly" window. Nothing is sent unless the person
-//! presses Send, and closing the window deletes the report.
+//! Crash reports, ask first. A panic or a fatal signal writes one file under `<data>/indiecrumb/crashes/`;
+//! the next launch asks "Hushpen quit unexpectedly." (Report…, Ignore). Report… shows the Problem
+//! Report window with the exact text; nothing is sent unless the person presses Send to Developer.
+//! Ignore, Don't Send, or closing the window deletes the report.
 
 use gpui_kit::App;
 use std::path::Path;
