@@ -269,7 +269,7 @@ pub mod size {
     pub const METER_BAR_MAX: f32 = 28.0;
     /// The transcript block on Home, high enough for two lines before it grows.
     pub const TRANSCRIPT_MIN_HEIGHT: f32 = 56.0;
-    /// The app icon at the top of About.
+    /// The size `radius::APP_ICON` is drawn for; other icon sizes scale the radius.
     pub const APP_ICON: f32 = 96.0;
     /// The columns of a Models row, so they line up from row to row. The meters of a speech
     /// model are a label and five dots on each of two lines; the icon buttons pack to the right
@@ -313,6 +313,57 @@ pub mod size {
     pub const PAIRING_NUMBER: f32 = 28.0;
     /// The field of Remote's Another machine, narrow enough to keep its label whole.
     pub const HOST_FIELD_WIDTH: f32 = 132.0;
+}
+
+/// Settings > About and the About window, the values of OnePlusUI `OnePlusAboutMetrics` that
+/// every samhq app shares (DESIGN.md About).
+pub mod about {
+    /// One drop shadow: black at `opacity`, `blur` wide, `y` down.
+    pub struct Shadow {
+        pub opacity: f32,
+        pub blur: f32,
+        pub y: f32,
+    }
+
+    pub const HERO_TOP: f32 = 10.0;
+    pub const HERO_ICON: f32 = 84.0;
+    pub const HERO_ICON_SHADOW: Shadow = Shadow {
+        opacity: 0.18,
+        blur: 8.0,
+        y: 4.0,
+    };
+    pub const HERO_TITLE: f32 = 20.0;
+    pub const HERO_TITLE_TOP: f32 = 10.0;
+    pub const TAGLINE_TOP: f32 = 3.0;
+    pub const VERSION_TOP: f32 = 6.0;
+    pub const BUTTONS_TOP: f32 = 14.0;
+
+    pub const WINDOW_WIDTH: f32 = 380.0;
+    pub const WINDOW_HEIGHT: f32 = 480.0;
+    pub const WINDOW_ICON: f32 = 104.0;
+    pub const WINDOW_ICON_SHADOW: Shadow = Shadow {
+        opacity: 0.25,
+        blur: 14.0,
+        y: 7.0,
+    };
+    pub const WINDOW_TITLE: f32 = 21.0;
+    pub const WINDOW_BUTTONS_TOP: f32 = 20.0;
+    pub const FOOTER_BOTTOM: f32 = 18.0;
+
+    /// The color field: a blurred copy of the icon plus two icon tints, faded out toward the
+    /// name. A tint is at its opacity in its center and clear at its radius.
+    pub const FIELD_HEIGHT: f32 = 230.0;
+    pub const FIELD_BLUR_ICON: f32 = 460.0;
+    pub const FIELD_BLUR: f32 = 60.0;
+    pub const FIELD_ICON_OPACITY_LIGHT: f32 = 0.3;
+    pub const FIELD_ICON_OPACITY_DARK: f32 = 0.45;
+    pub const FIELD_TINTS: [(f32, (f32, f32), f32); 2] =
+        [(0.4, (0.2, 0.1), 260.0), (0.3, (0.85, 0.2), 240.0)];
+    /// The glow behind the icon breathes between these opacities, `GLOW_BREATH` seconds each
+    /// way.
+    pub const GLOW: f32 = 200.0;
+    pub const GLOW_OPACITY: (f32, f32) = (0.35, 0.55);
+    pub const GLOW_BREATH: f32 = 2.4;
 }
 
 /// The top of an element `height` high that centers on the chrome center line.

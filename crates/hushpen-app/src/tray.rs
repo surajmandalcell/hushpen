@@ -1,5 +1,5 @@
 //! The tray icon and its menu: Start or Stop dictation, Paste last transcript, Show Hushpen,
-//! Settings, and Quit.
+//! Settings, About Hushpen, and Quit.
 //!
 //! Each entry is a GPUI action. [`register_actions`] turns the actions into what a click in the
 //! app would do: the flow bar's click (so a refused start shows its reason on the bar), the
@@ -42,15 +42,17 @@ pub enum Item {
     PasteLast,
     Show,
     Settings,
+    About,
     Quit,
 }
 
 impl Item {
-    pub const ALL: [Item; 5] = [
+    pub const ALL: [Item; 6] = [
         Item::Dictation,
         Item::PasteLast,
         Item::Show,
         Item::Settings,
+        Item::About,
         Item::Quit,
     ];
 
@@ -62,6 +64,7 @@ impl Item {
             Item::PasteLast => "Paste last transcript",
             Item::Show => "Show Hushpen",
             Item::Settings => "Settings",
+            Item::About => "About Hushpen",
             Item::Quit => "Quit",
         }
     }
@@ -72,6 +75,7 @@ impl Item {
             Item::PasteLast => "paste-last",
             Item::Show => "show",
             Item::Settings => "settings",
+            Item::About => "about",
             Item::Quit => "quit",
         }
     }
@@ -82,13 +86,14 @@ impl Item {
             Item::PasteLast => Box::new(PasteLastTranscript),
             Item::Show => Box::new(ShowHushpen),
             Item::Settings => Box::new(ShowSettings),
+            Item::About => Box::new(ShowAbout),
             Item::Quit => Box::new(QuitHushpen),
         }
     }
 }
 
 /// The menu for the pipeline as it is now. There are no separators, so a menu reader sees the
-/// five entries and nothing else.
+/// six entries and nothing else.
 pub fn menu_items(listening: bool) -> Vec<MenuItem> {
     Item::ALL
         .into_iter()
@@ -219,7 +224,13 @@ pub fn register_actions(cx: &mut App, surfaces: &Surfaces) {
         open_view(&shell, View::Settings, cx);
     });
     let shell = surfaces.shell.downgrade();
-    cx.on_action(move |_: &ShowAbout, cx| open_view(&shell, View::About, cx));
+    cx.on_action(move |_: &ShowAbout, cx| {
+        hook::record_event("tray", "about");
+        match shell.upgrade().and_then(|shell| shell.read(cx).about()) {
+            Some(about) => crate::about::open_window(&about, cx),
+            None => open_view(&shell, View::About, cx),
+        }
+    });
     cx.on_action(|_: &HideHushpen, cx| main_window::hide_app(cx));
     cx.on_action(|_: &QuitHushpen, cx| {
         hook::record_event("tray", "quit");

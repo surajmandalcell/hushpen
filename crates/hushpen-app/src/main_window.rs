@@ -307,6 +307,22 @@ pub fn reopened(cx: &mut App) {
     }
 }
 
+/// Brings another window of the app, such as the About window, in front with the app, from the
+/// app menu or the tray.
+pub fn bring_forward(handle: AnyWindowHandle, cx: &mut App) {
+    let native = cx
+        .try_global::<MainWindow>()
+        .map(|main| Rc::clone(&main.native));
+    after_update(cx, move |cx| {
+        if let Some(native) = native {
+            native.activate_app();
+        }
+        cx.update(|cx| {
+            let _ = handle.update(cx, |_, window, _| window.activate_window());
+        });
+    });
+}
+
 /// Hides every window of the app, from the app menu. Does nothing when no main window is
 /// registered.
 pub fn hide_app(cx: &mut App) {

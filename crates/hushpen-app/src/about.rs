@@ -3,10 +3,12 @@
 //! hook.
 
 mod panel;
+mod window;
 
 use crate::hook;
 use crate::models::Models;
 use crate::storage::Storage;
+use crate::theme;
 use crate::updater::{State, Updater};
 use gpui_kit::{App, Context, Entity, FocusHandle};
 use hushpen_core::links;
@@ -16,6 +18,10 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub(crate) use panel::render;
+pub use window::open as open_window;
+
+/// Whether the glow of the About window breathes. Reduce Motion stops it too.
+const ANIMATION_KEY: &str = "about.animation";
 
 /// The line under the name.
 pub const TAGLINE: &str = if matches!(hushpen_core::os::Os::current(), hushpen_core::os::Os::Mac) {
@@ -102,7 +108,9 @@ impl Target {
 
 /// The slot of Check for Updates in [`About::focus`].
 const CHECK_SLOT: usize = 0;
-const SLOTS: usize = 7;
+/// The slot of the About window Animation switch, after the links.
+const ANIMATION_SLOT: usize = 7;
+const SLOTS: usize = 8;
 
 const NOTICES_FILE: &str = "THIRD-PARTY-NOTICES.html";
 
@@ -194,6 +202,23 @@ impl About {
     #[cfg(test)]
     fn set_notices(&mut self, path: Option<PathBuf>) {
         self.notices = path;
+    }
+
+    /// The About window Animation setting, on unless the user turned it off.
+    pub fn animates(&self) -> bool {
+        self.storage
+            .settings
+            .get(ANIMATION_KEY)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true)
+    }
+
+    pub fn set_animation(&mut self, on: bool, cx: &mut Context<Self>) {
+        match self.storage.settings.set(ANIMATION_KEY, json!(on)) {
+            Ok(()) => hook::record_event("about", &format!("animation {on}")),
+            Err(error) => self.notice = Some(format!("The setting could not be saved: {error}")),
+        }
+        cx.notify();
     }
 
     pub fn version(&self) -> &'static str {
@@ -320,6 +345,24 @@ impl About {
             "open-requests": self.requests.borrow().clone(),
         })
     }
+}
+
+/// The app icon at `size` points with its drop shadow, its corners scaled from the 96 pt icon.
+fn app_icon(size: f32, shadow: &theme::about::Shadow) -> impl gpui_kit::IntoElement {
+    use gpui_kit::{BoxShadow, ParentElement as _, Styled as _, div, hsla, img, point, px};
+    let corner = px(theme::radius::APP_ICON * size / theme::size::APP_ICON);
+    div()
+        .size(px(size))
+        .flex_none()
+        .rounded(corner)
+        .shadow(vec![BoxShadow {
+            color: hsla(0.0, 0.0, 0.0, shadow.opacity),
+            offset: point(px(0.0), px(shadow.y)),
+            blur_radius: px(shadow.blur),
+            spread_radius: px(0.0),
+            inset: false,
+        }])
+        .child(img(crate::assets::APP_ICON).size_full().rounded(corner))
 }
 
 #[cfg(test)]

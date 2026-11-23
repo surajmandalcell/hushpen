@@ -1,29 +1,31 @@
-//! The About view: the app header, a group of facts, a group of links, and the copyright line.
+//! Settings > About, the centered hero every samhq app shares: the icon, the name, the build and
+//! the update state, then Links, the About window Animation switch, this install, and the footer.
 
-use super::{About, Build, CHECK_SLOT, COPYRIGHT, PRIVACY, TAGLINE, Target};
-use crate::assets::APP_ICON;
+use super::{
+    ANIMATION_SLOT, About, Build, CHECK_SLOT, COPYRIGHT, PRIVACY, TAGLINE, Target, app_icon,
+};
 use crate::hook;
-use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, TITLE, radius, size, space};
+use crate::theme::{self, BODY, Palette, SECONDARY, StyledType, about as metrics, space};
 use crate::ui::{self, Kind, Notice};
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::assets::IconName;
 use gpui_kit::{
-    AnyElement, App, Entity, FocusHandle, InteractiveElement, IntoElement, ParentElement, Role,
-    SharedString, StatefulInteractiveElement, Styled, Window, div, img, px,
+    AnyElement, App, Entity, FocusHandle, FontWeight, InteractiveElement, IntoElement,
+    ParentElement, Role, SharedString, StatefulInteractiveElement, Styled, Window, div, px,
 };
 
-/// The rows of the links group, top to bottom.
-const LINKS: [(Target, &str); 5] = [
-    (Target::Website, "Website"),
-    (Target::Github, "GitHub"),
-    (Target::Issues, "Report an issue"),
-    (Target::Licenses, "Open-source licenses"),
-    (Target::LogFolder, "Open log folder"),
+/// The rows of the links group, top to bottom, with the short address shown on the right.
+const LINKS: [(Target, &str, Option<&str>); 5] = [
+    (Target::Website, "Website", Some("hushpen.samhq.app")),
+    (Target::Github, "GitHub", Some("surajmandalcell/hushpen")),
+    (Target::Issues, "Report an issue", None),
+    (Target::Licenses, "Open-source licenses", None),
+    (Target::LogFolder, "Open log folder", None),
 ];
 
 pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
     let palette = theme::palette(cx);
-    let (build, folder, engine, notice, focus, can_check, status) = {
+    let (build, folder, engine, notice, focus, can_check, status, animates) = {
         let me = about.read(cx);
         (
             me.build(),
@@ -33,6 +35,7 @@ pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
             me.focus.clone(),
             me.can_check_for_updates(cx),
             me.update_status(cx),
+            me.animates(),
         )
     };
     let show = ui::button(
@@ -58,8 +61,29 @@ pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
     ];
     let links = LINKS
         .into_iter()
-        .map(|(target, title)| link_row(palette, about, target, title, &focus[target.slot()]))
+        .map(|(target, title, address)| {
+            link_row(
+                palette,
+                about,
+                target,
+                title,
+                address,
+                &focus[target.slot()],
+            )
+        })
         .collect();
+    let animation = {
+        let about = about.clone();
+        ui::toggle_row(
+            palette,
+            hook::id("about", "animation"),
+            "Animation",
+            "The glow behind the icon breathes slowly.",
+            animates,
+            &focus[ANIMATION_SLOT],
+            move |cx| about.update(cx, |me, cx| me.set_animation(!animates, cx)),
+        )
+    };
     let mut page = div()
         .flex()
         .flex_col()
@@ -73,8 +97,21 @@ pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
             status,
             &focus[CHECK_SLOT],
         ))
-        .child(ui::group(hook::id("about", "facts"), palette, facts));
-    // Under the facts and over the links, so it shows beside the control that failed.
+        .child(ui::titled_section(
+            palette,
+            hook::id("about", "links.heading"),
+            "Links",
+            ui::group(hook::id("about", "links"), palette, links),
+            None,
+        ))
+        .child(ui::titled_section(
+            palette,
+            hook::id("about", "window.heading"),
+            "About window",
+            ui::group(hook::id("about", "window"), palette, vec![animation]),
+            None,
+        ));
+    // Over the facts, so a failed open or save shows near the control.
     if let Some(message) = notice {
         page = page.child(ui::group(
             hook::id("about", "notices"),
@@ -88,30 +125,36 @@ pub fn render(about: &Entity<About>, cx: &mut App) -> impl IntoElement + use<> {
             )],
         ));
     }
-    page.child(ui::group(hook::id("about", "links"), palette, links))
-        .child(
-            div()
-                .id(hook::id("about", "privacy"))
-                .test_support()
-                .aria_label(PRIVACY)
-                .w_full()
-                .text_center()
-                .text_token(SECONDARY)
-                .text_color(palette.label_secondary)
-                .child(PRIVACY),
+    page.child(ui::titled_section(
+        palette,
+        hook::id("about", "facts.heading"),
+        "This install",
+        ui::group(hook::id("about", "facts"), palette, facts),
+        None,
+    ))
+    .child(
+        div()
+            .id(hook::id("about", "privacy"))
+            .test_support()
+            .aria_label(PRIVACY)
+            .w_full()
+            .text_center()
+            .text_token(SECONDARY)
+            .text_color(palette.label_secondary)
+            .child(PRIVACY),
+    )
+    .child(
+        line(
+            hook::id("about", "copyright"),
+            COPYRIGHT.to_owned(),
+            SECONDARY,
         )
-        .child(
-            line(
-                hook::id("about", "copyright"),
-                COPYRIGHT.to_owned(),
-                SECONDARY,
-            )
-            .text_color(palette.label_secondary),
-        )
+        .text_color(palette.label_secondary),
+    )
 }
 
-/// The icon, the name, the line under it, the build, and Check for Updates with what the last
-/// check found, centered like the About window of a Mac app.
+/// The icon, the name, the line under it, the build with what the last check found, and Check
+/// for Updates, centered like the About window.
 fn header(
     palette: Palette,
     about: &Entity<About>,
@@ -129,33 +172,46 @@ fn header(
         .flex_col()
         .items_center()
         .w_full()
-        .pt(px(space::SM))
+        .pt(px(metrics::HERO_TOP))
         .child(
             div()
                 .id(hook::id("about", "icon"))
                 .test_support()
                 .role(Role::Image)
                 .aria_label("Hushpen app icon")
-                .flex_none()
-                .size(px(size::APP_ICON))
-                .child(img(APP_ICON).size_full().rounded(px(radius::APP_ICON))),
+                .child(app_icon(metrics::HERO_ICON, &metrics::HERO_ICON_SHADOW)),
         )
         .child(
-            line(hook::id("about", "name"), "Hushpen".to_owned(), TITLE)
-                .mt(px(space::SM))
+            line(hook::id("about", "name"), "Hushpen".to_owned(), BODY)
+                .mt(px(metrics::HERO_TITLE_TOP))
+                .text_size(px(metrics::HERO_TITLE))
+                .font_weight(FontWeight::SEMIBOLD)
                 .text_color(palette.label),
         )
         .child(
             line(hook::id("about", "tagline"), TAGLINE.to_owned(), BODY)
-                .mt(px(space::XXS))
+                .mt(px(metrics::TAGLINE_TOP))
                 .text_color(palette.label_secondary),
         )
         .child(
-            line(hook::id("about", "build"), build.line(), SECONDARY)
-                .mt(px(space::XXS))
-                .text_color(palette.label_secondary),
+            div()
+                .flex()
+                .justify_center()
+                .w_full()
+                .mt(px(metrics::VERSION_TOP))
+                .text_token(SECONDARY)
+                .text_color(palette.label_secondary)
+                .child(
+                    div()
+                        .id(hook::id("about", "build"))
+                        .test_support()
+                        .aria_label(build.line())
+                        .flex_none()
+                        .child(build.line()),
+                )
+                .child(update_status(palette, status)),
         )
-        .child(div().mt(px(space::MD)).child(ui::button(
+        .child(div().mt(px(metrics::BUTTONS_TOP)).child(ui::button(
             palette,
             hook::id("about", "checkForUpdates"),
             "Check for Updates",
@@ -164,31 +220,33 @@ fn header(
             can_check,
             check,
         )))
-        .child(update_status(palette, status))
 }
 
-/// What the last check found, in the error color when it failed. The line keeps its height while
-/// it is empty, so a check does not move the page.
-fn update_status(palette: Palette, status: Option<(String, bool)>) -> impl IntoElement {
-    let id = hook::id("about", "updates.status");
-    match status {
-        Some((text, failed)) => {
-            line(id, text, SECONDARY)
-                .role(Role::Status)
-                .text_color(if failed {
-                    palette.error
-                } else {
-                    palette.label_secondary
-                })
-        }
-        None => line(id, String::new(), SECONDARY),
-    }
-    .mt(px(space::XS))
-    .min_h(px(SECONDARY.size * SECONDARY.line_height))
+/// What the last check found, after the build, in the error color when it failed. Empty before
+/// the first check.
+pub(super) fn update_status(palette: Palette, status: Option<(String, bool)>) -> impl IntoElement {
+    let (text, failed) = status.unwrap_or_default();
+    let shown = if text.is_empty() {
+        String::new()
+    } else {
+        format!("  ·  {text}")
+    };
+    div()
+        .id(hook::id("about", "updates.status"))
+        .test_support()
+        .role(Role::Status)
+        .aria_label(text)
+        .truncate()
+        .text_color(if failed {
+            palette.error
+        } else {
+            palette.label_secondary
+        })
+        .child(shown)
 }
 
 /// One centered line of text under `id`, with its text as the label so a test reads it exactly.
-fn line(
+pub(super) fn line(
     id: SharedString,
     text: String,
     token: theme::TextToken,
@@ -233,6 +291,7 @@ fn link_row(
     about: &Entity<About>,
     target: Target,
     title: &'static str,
+    address: Option<&'static str>,
     focus: &FocusHandle,
 ) -> AnyElement {
     ui::press_row(
@@ -244,6 +303,25 @@ fn link_row(
         opens(about, target),
     )
     .child(ui::title(palette).flex_1().min_w_0().child(title))
+    .children(address.map(|address| ui::value(palette).child(address)))
     .child(ui::glyph(palette, IconName::ExternalLink))
     .into_any_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hushpen_core::links;
+
+    #[test]
+    fn each_link_address_is_part_of_its_url() {
+        for (target, _, address) in LINKS {
+            let url = match target {
+                Target::Website => links::SITE_URL,
+                Target::Github => links::REPO_URL,
+                _ => continue,
+            };
+            assert!(url.contains(address.unwrap()), "{url}");
+        }
+    }
 }

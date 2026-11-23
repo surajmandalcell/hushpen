@@ -7,7 +7,7 @@ use std::borrow::Cow;
 /// The asset path of the app icon About shows, for `img()`.
 pub const APP_ICON: &str = "images/hushpen-app-icon.png";
 /// Two pixels for each point of the 96 px icon, so a Retina screen draws it without scaling.
-const APP_ICON_PNG: &[u8] = include_bytes!("../../../assets/hushpen-app-icon-192.png");
+pub(crate) const APP_ICON_PNG: &[u8] = include_bytes!("../../../assets/hushpen-app-icon-192.png");
 
 pub const INTER_MEDIUM: &[u8] = include_bytes!("../../../assets/fonts/Inter-Medium.ttf");
 pub const INTER_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Inter-SemiBold.ttf");

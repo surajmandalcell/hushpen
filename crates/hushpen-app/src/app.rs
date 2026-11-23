@@ -46,7 +46,7 @@ use std::process::ExitCode;
 use std::rc::Rc;
 use std::sync::Arc;
 
-const APP_ID: &str = "hushpen";
+pub(crate) const APP_ID: &str = "hushpen";
 
 /// How the main window starts, from how the process was launched.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

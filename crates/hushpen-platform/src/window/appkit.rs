@@ -30,6 +30,20 @@ pub(super) fn close_button_height(view: usize) -> Option<f64> {
     Some(button.frame().size.height)
 }
 
+pub(super) fn close_button_only(view: usize) -> Result<(), ChromeError> {
+    let window = window_of(view)?;
+    for kind in [
+        NSWindowButton::MiniaturizeButton,
+        NSWindowButton::ZoomButton,
+    ] {
+        if let Some(button) = window.standardWindowButton(kind) {
+            button.setHidden(true);
+        }
+    }
+    window.setCollectionBehavior(NSWindowCollectionBehavior::FullScreenNone);
+    Ok(())
+}
+
 fn window_of(view: usize) -> Result<Retained<NSWindow>, ChromeError> {
     MainThreadMarker::new()
         .ok_or_else(|| ChromeError::new("window chrome needs the main thread"))?;

@@ -122,6 +122,16 @@ pub fn lock_chrome(handle: WindowHandle, limits: SizeLimits) -> Result<(), Chrom
     }
 }
 
+/// Leaves a fixed window only its close button: macOS hides minimize and zoom and refuses full
+/// screen. Other backends draw what the window options asked for.
+pub fn close_button_only(handle: WindowHandle) -> Result<(), ChromeError> {
+    match handle {
+        #[cfg(target_os = "macos")]
+        WindowHandle::AppKit(view) => appkit::close_button_only(view),
+        _ => Ok(()),
+    }
+}
+
 /// The height in points of the standard close button frame on macOS, which is taller than the
 /// circle it draws. `None` on other backends or before AppKit made the button.
 pub fn close_button_height(handle: WindowHandle) -> Option<f64> {

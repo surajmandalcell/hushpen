@@ -17,7 +17,7 @@ fn names(listening: bool) -> Vec<String> {
 }
 
 #[test]
-fn the_menu_has_five_entries_in_the_promised_order() {
+fn the_menu_has_six_entries_in_the_promised_order() {
     assert_eq!(
         names(false),
         [
@@ -25,6 +25,7 @@ fn the_menu_has_five_entries_in_the_promised_order() {
             "Paste last transcript",
             "Show Hushpen",
             "Settings",
+            "About Hushpen",
             "Quit"
         ]
     );
@@ -243,7 +244,7 @@ fn a_click_by_hook_id_runs_the_entry_and_an_unknown_id_names_the_valid_ones(
     let error = cx.update(|cx| super::click("nope", cx)).unwrap_err();
     assert_eq!(
         error,
-        "'nope' is not a tray entry; use one of: toggle-dictation, paste-last, show, settings, quit"
+        "'nope' is not a tray entry; use one of: toggle-dictation, paste-last, show, settings, about, quit"
     );
 }
 

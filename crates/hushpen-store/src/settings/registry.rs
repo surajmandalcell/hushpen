@@ -329,6 +329,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!("updates.check", Kind::Bool, |_| json!(false)),
     spec!("updates.autoInstall", Kind::Bool, |_| json!(false)),
     spec!("updates.shareUsage", Kind::Bool, |_| json!(true)),
+    spec!("about.animation", Kind::Bool, |_| json!(true)),
     spec!(internal "onboarding.completed", Kind::Bool, |_| json!(false)),
     spec!(internal "onboarding.step", Kind::OptionalText(64), |_| json!("")),
     spec!(internal "permissions.lastGranted", Kind::BoolMap, |_| json!({})),
@@ -341,6 +342,7 @@ pub(super) static REGISTRY: &[Spec] = &[
     spec!(internal "overlay.customPos", Kind::Position, |_| Value::Null),
     spec!(internal "ui.lastView", Kind::Choice(VIEWS), |_| json!("home")),
     spec!(internal "ui.windowHeight", Kind::Int(600, 4000), |_| json!(600)),
+    spec!(internal "ui.aboutWindowPos", Kind::Position, |_| Value::Null),
 ];
 
 /// The keys of the sidebar views, which the app saves as the last view. Manual keeps `files`,

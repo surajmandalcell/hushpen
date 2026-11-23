@@ -161,6 +161,11 @@ impl Shell {
         cx.notify();
     }
 
+    /// The About state, for the About window.
+    pub fn about(&self) -> Option<Entity<About>> {
+        self.about.clone()
+    }
+
     /// Shows the update banner above every view while a version waits for the person.
     pub fn attach_updater(&mut self, updater: Entity<Updater>, cx: &mut Context<Self>) {
         cx.observe(&updater, |_, _, cx| cx.notify()).detach();
