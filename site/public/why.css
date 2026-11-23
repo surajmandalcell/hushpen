@@ -47,14 +47,26 @@
 
 /* Compare chart (home performance section): seconds to write out a recording against its length, full width */
 .cmp-card { margin: 36px 0 0; padding: 30px 30px 24px; border-radius: 28px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
-.cmp-svg svg { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--app); }
-.cmp-svg .g { stroke: rgba(0, 0, 0, .07); }
-.cmp-svg .t { fill: var(--ink3); }
-.cmp-narrow { display: none; }
+/* Drawn by cmp.js. The svg size comes from aspect-ratio, so nothing moves when the script fills it. */
+.cmp-plot svg { display: block; width: 100%; aspect-ratio: 25 / 9; overflow: visible; font-family: var(--app); font-variant-numeric: tabular-nums; }
+.cmp-plot .g { stroke: rgba(0, 0, 0, .07); }
+.cmp-plot .t { fill: var(--ink3); }
+.cmp-plot .tt { fill: var(--ink2); font-weight: 600; }
+.cmp-plot .ser { transition: opacity .22s ease; }
+.cmp-plot svg.dim .ser:not(.on) { opacity: .12; }
+.cmp-plot .hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; }
+.cmp-key li { transition: opacity .22s ease, color .22s ease; -webkit-tap-highlight-color: transparent; }
+.cmp-key.dim li:not(.on) { opacity: .38; }
+.cmp-key.dim li.on { color: var(--ink); }
+/* Zoom label over the chart: two stacked spans crossfade; its height is kept, so nothing moves. */
+.cmp-cap { position: relative; height: 20px; margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--ink2); }
+@media (prefers-reduced-motion: reduce) { .cmp-cap { display: none; } }
+.cmp-cap span { position: absolute; inset: 0 auto auto 0; opacity: 0; transform: translateY(3px); transition: opacity .35s ease, transform .45s cubic-bezier(.2, .8, .2, 1); }
+.cmp-cap span.in { opacity: 1; transform: none; }
 .cmp-foot { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); font-size: 14px; line-height: 1.5; color: var(--ink2); }
 @media (max-width: 720px) {
   .cmp-card { margin-top: 24px; padding: 18px 12px 16px; border-radius: 22px; }
-  .cmp-wide { display: none; }
-  .cmp-narrow { display: block; }
+  .cmp-plot svg { aspect-ratio: 20 / 19; }
+  .cmp-cap { margin-left: 4px; font-size: 12px; }
   .cmp-foot { font-size: 13px; }
 }

@@ -56,13 +56,13 @@
     }, () => { raw.textContent = EX[0][0]; res.textContent = EX[0][1]; });
   }
 
-  // Real-time with Nemotron: words land at talking speed (about 150 a minute). The newest word is a guess (gray)
+  // Real-time with Hushpen N (Nemotron Unified): words land at talking speed (about 150 a minute). The newest word is a guess (gray)
   // until the next one comes; the last one settles 0.30 s after you stop, the measured time in benchmarks.html.
   const rt = document.querySelector('[data-rt]');
   if (rt) {
     const SAID = ['Can we move the design review to Thursday afternoon?', 'I will bring the new numbers.'];
     const tx = rt.querySelector('.rt-tx'), h = rt.querySelector('.rt-h'), say = h.querySelector('span');
-    const done = on => { h.classList.toggle('done', on); say.textContent = on ? 'Nemotron, done' : 'Nemotron, listening'; };
+    const done = on => { h.classList.toggle('done', on); say.textContent = on ? 'Hushpen N, done' : 'Hushpen N, listening'; };
     const put = (ws, n, guess) => { tx.innerHTML = ws.slice(0, n).map((w, i) => `<span${guess && i === n - 1 ? ' class="g"' : ''}>${w}</span>`).join(' ') + '<b></b>'; };
     let k = 0;
     loop(rt, async () => {

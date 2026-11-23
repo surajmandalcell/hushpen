@@ -208,9 +208,15 @@ h2 span { color: var(--ink3); }
 .rt-d { display: grid; grid-template-rows: minmax(0, 1fr) auto; gap: 14px; }
 .rt-box { position: relative; min-height: 0; overflow: hidden; padding: 12px 16px 14px; border-radius: 16px; background: #F6F6F8; box-shadow: inset 0 0 0 .5px var(--line); }
 .rt-h { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--ink3); }
-.rt-h i { width: 7px; height: 7px; border-radius: 50%; background: #FF3B30; }
-.t.rt.live .rt-h i { animation: rtDot 1.2s ease-in-out infinite; }
-.rt-h.done i { background: #34C759; animation: none; }
+/* Live indicator: a thin red ring spins while listening, then a green check. It draws 10 px over the 7 px box,
+   centered, so the label never moves. */
+.rt-h i { position: relative; width: 7px; height: 7px; flex: none; }
+.rt-h i::before, .rt-h i::after { content: ""; position: absolute; left: -1.5px; top: -1.5px; width: 10px; height: 10px; box-sizing: border-box; border-radius: 50%; transition: opacity .25s ease, transform .35s cubic-bezier(.2, .9, .3, 1.3); }
+.rt-h i::before { border: 1.5px solid rgba(255, 59, 48, .2); border-top-color: #FF3B30; }
+.rt-h i::after { opacity: 0; transform: scale(.4); background: #34C759 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M2.9 5.2 4.3 6.6 7.1 3.6' fill='none' stroke='%23fff' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 10px 10px no-repeat; }
+.t.rt.live .rt-h:not(.done) i::before { animation: rtSpin .75s linear infinite; }
+.rt-h.done i::before { opacity: 0; transform: scale(.6); }
+.rt-h.done i::after { opacity: 1; transform: none; }
 .rt-tx { margin-top: 6px; font-size: 21px; line-height: 1.4; letter-spacing: -.02em; }
 @media (max-width: 700px) { .rt-tx { font-size: 17px; } }
 .rt-tx span { transition: color .25s var(--ease); }
@@ -219,8 +225,8 @@ h2 span { color: var(--ink3); }
 .rt-f { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .rt-f p { font-size: 12px; line-height: 1.3; color: var(--ink2); }
 .rt-f b { display: block; font-size: 20px; font-weight: 700; letter-spacing: -.03em; color: var(--ink); font-variant-numeric: tabular-nums; }
-@keyframes rtDot { 50% { opacity: .25; } }
-@media (prefers-reduced-motion: reduce) { .t.rt.live .rt-h i { animation: none; } }
+@keyframes rtSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .t.rt.live .rt-h:not(.done) i::before { animation: none; } }
 /* Shortcuts */
 .sc-d { display: grid; place-content: center; justify-items: center; gap: 22px; }
 .sc-k { display: grid; justify-items: center; width: 296px; }

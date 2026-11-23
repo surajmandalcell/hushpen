@@ -18,7 +18,7 @@
   const RULES = ['So', 'basically', 'the', 'report', 'is', 'late,', 'sorry.'];
   const CLEAN = 'The report is late. Sorry about that.';
   const STEPS = [
-    ['Download Nemotron', '939 MB, checked when it lands'],
+    ['Download Hushpen N', '939 MB, checked when it lands'],
     ['Dictate', 'Press Option + Tab and talk'],
     ['Turn on S1-mini', 'AI cleanup on your Mac'],
     ['Cleaner text', 'Same words, tidied up'],
