@@ -1,6 +1,6 @@
 // Google Analytics 4 for this site. GA_ID is the one place to set the measurement ID.
 (function () {
-  var GA_ID = 'G-SAMHQPLACEHOLDER';
+  var GA_ID = 'G-ZZPYXGLN2H';
   if (!/^G-[A-Z0-9]+$/.test(GA_ID) || GA_ID === 'G-SAMHQPLACEHOLDER') return;
   var h = location.hostname;
   window.dataLayer = window.dataLayer || [];
