@@ -135,26 +135,28 @@ The phone screens use basic placeholders. See the [phone build guide](mobile/REA
 
 Home, Models, History, Dictionary, Transcribe, and Settings. Click one to see it full size.
 
+<sub>Why do they look almost identical? Power of <a href="https://www.gpui.rs/" title="Zed's GPU UI framework: one Rust codebase draws every pixel on Mac and Linux"><ins>GPUI</ins></a> bby!</sub>
+
 **Mac**
 
 <p>
-<a href="assets/readme/shots/mac/home-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/home-dark.webp"><img src="assets/readme/shots/mac/home-light.webp" alt="Home on Mac" width="140"></picture></a>
-<a href="assets/readme/shots/mac/models-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/models-dark.webp"><img src="assets/readme/shots/mac/models-light.webp" alt="Models on Mac" width="140"></picture></a>
-<a href="assets/readme/shots/mac/history-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/history-dark.webp"><img src="assets/readme/shots/mac/history-light.webp" alt="History on Mac" width="140"></picture></a>
-<a href="assets/readme/shots/mac/dictionary-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/dictionary-dark.webp"><img src="assets/readme/shots/mac/dictionary-light.webp" alt="Dictionary on Mac" width="140"></picture></a>
-<a href="assets/readme/shots/mac/transcribe-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/transcribe-dark.webp"><img src="assets/readme/shots/mac/transcribe-light.webp" alt="Transcribe on Mac" width="140"></picture></a>
-<a href="assets/readme/shots/mac/settings-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/settings-dark.webp"><img src="assets/readme/shots/mac/settings-light.webp" alt="Settings on Mac" width="140"></picture></a>
+<a href="assets/readme/shots/mac/home-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/home-dark.webp"><img src="assets/readme/shots/mac/home-light.webp" alt="Home on Mac" width="120"></picture></a>
+<a href="assets/readme/shots/mac/models-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/models-dark.webp"><img src="assets/readme/shots/mac/models-light.webp" alt="Models on Mac" width="120"></picture></a>
+<a href="assets/readme/shots/mac/history-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/history-dark.webp"><img src="assets/readme/shots/mac/history-light.webp" alt="History on Mac" width="120"></picture></a>
+<a href="assets/readme/shots/mac/dictionary-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/dictionary-dark.webp"><img src="assets/readme/shots/mac/dictionary-light.webp" alt="Dictionary on Mac" width="120"></picture></a>
+<a href="assets/readme/shots/mac/transcribe-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/transcribe-dark.webp"><img src="assets/readme/shots/mac/transcribe-light.webp" alt="Transcribe on Mac" width="120"></picture></a>
+<a href="assets/readme/shots/mac/settings-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/mac/settings-dark.webp"><img src="assets/readme/shots/mac/settings-light.webp" alt="Settings on Mac" width="120"></picture></a>
 </p>
 
 **Linux**
 
 <p>
-<a href="assets/readme/shots/linux/home-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/home-dark.webp"><img src="assets/readme/shots/linux/home-light.webp" alt="Home on Linux" width="140"></picture></a>
-<a href="assets/readme/shots/linux/models-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/models-dark.webp"><img src="assets/readme/shots/linux/models-light.webp" alt="Models on Linux" width="140"></picture></a>
-<a href="assets/readme/shots/linux/history-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/history-dark.webp"><img src="assets/readme/shots/linux/history-light.webp" alt="History on Linux" width="140"></picture></a>
-<a href="assets/readme/shots/linux/dictionary-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/dictionary-dark.webp"><img src="assets/readme/shots/linux/dictionary-light.webp" alt="Dictionary on Linux" width="140"></picture></a>
-<a href="assets/readme/shots/linux/transcribe-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/transcribe-dark.webp"><img src="assets/readme/shots/linux/transcribe-light.webp" alt="Transcribe on Linux" width="140"></picture></a>
-<a href="assets/readme/shots/linux/settings-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/settings-dark.webp"><img src="assets/readme/shots/linux/settings-light.webp" alt="Settings on Linux" width="140"></picture></a>
+<a href="assets/readme/shots/linux/home-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/home-dark.webp"><img src="assets/readme/shots/linux/home-light.webp" alt="Home on Linux" width="120"></picture></a>
+<a href="assets/readme/shots/linux/models-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/models-dark.webp"><img src="assets/readme/shots/linux/models-light.webp" alt="Models on Linux" width="120"></picture></a>
+<a href="assets/readme/shots/linux/history-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/history-dark.webp"><img src="assets/readme/shots/linux/history-light.webp" alt="History on Linux" width="120"></picture></a>
+<a href="assets/readme/shots/linux/dictionary-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/dictionary-dark.webp"><img src="assets/readme/shots/linux/dictionary-light.webp" alt="Dictionary on Linux" width="120"></picture></a>
+<a href="assets/readme/shots/linux/transcribe-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/transcribe-dark.webp"><img src="assets/readme/shots/linux/transcribe-light.webp" alt="Transcribe on Linux" width="120"></picture></a>
+<a href="assets/readme/shots/linux/settings-light.webp"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/readme/shots/linux/settings-dark.webp"><img src="assets/readme/shots/linux/settings-light.webp" alt="Settings on Linux" width="120"></picture></a>
 </p>
 
 ## Learn more
