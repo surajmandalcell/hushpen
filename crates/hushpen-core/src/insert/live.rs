@@ -215,10 +215,20 @@ mod tests {
             fixed.replace_range(edit.range.clone(), edit.with);
         }
         assert_eq!(fixed, desired);
-        assert!(edits.iter().all(|edit| edit.range.start >= "So it began. ".len()));
+        assert!(
+            edits
+                .iter()
+                .all(|edit| edit.range.start >= "So it began. ".len())
+        );
         assert_eq!(word_edits("same text", "same text").unwrap(), vec![]);
         let edits = word_edits("", "new words").unwrap();
-        assert_eq!(edits, vec![WordEdit { range: 0..0, with: "new words" }]);
+        assert_eq!(
+            edits,
+            vec![WordEdit {
+                range: 0..0,
+                with: "new words"
+            }]
+        );
     }
 
     #[test]
