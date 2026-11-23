@@ -68,11 +68,12 @@ html[data-os="windows"] .brew, html[data-os^="linux"] .brew { display: none; }
 .sw[aria-checked="true"] { background: #007AFF; } .sw[aria-checked="true"]::after { transform: translateX(16px); }
 
 /* macOS menu bar, 1:1 points, as on a real Mac with no notch: 30 points high, no fill, white text and icons over
-   the wallpaper, with a faint shadow so they still read on light parts of it */
-.mb { display: flex; align-items: center; height: 30px; padding: 0 8px 2px 16px; font: 500 13px/1 var(--text); letter-spacing: 0; color: #fff; white-space: nowrap; overflow: hidden; background: none; filter: drop-shadow(0 .5px 1px rgba(0, 0, 0, .22)); }
+   the wallpaper. No filter and no tight shadow: a 1 px dark halo makes white text look over-sharpened and jagged.
+   Only a wide, faint glow, which reads as no shadow at all, keeps it legible on the light blossoms. */
+.mb { display: flex; align-items: center; height: 30px; padding: 0 8px 2px 16px; font: 500 13px/1 var(--text); letter-spacing: 0; color: #fff; white-space: nowrap; overflow: hidden; background: none; text-shadow: 0 0 10px rgba(0, 0, 0, .14); -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 .mb > * { flex: none; }
 .mb > b, .mb > span { padding: 0 10px; }
-.mb > b { font-weight: 700; }
+.mb > b { font-weight: 600; }
 .mb-apple { width: 14px; height: 17px; margin-right: 8px; background: currentColor; -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701'/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701'/%3E%3C/svg%3E") center / contain no-repeat; }
 .mb-sp { flex: 1 !important; }
 .mb > .mb-st { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; margin-right: 5px; border-radius: 6px; transition: background-color .2s; }

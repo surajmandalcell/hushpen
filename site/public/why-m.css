@@ -24,12 +24,12 @@
    moving camera never shows a gap at the box edge. */
 .hs-bg { position: absolute; left: -12px; top: -12px; width: 1536px; height: 969px; max-width: none; max-height: none; object-fit: cover; will-change: transform; }
 /* macOS menu bar on a screen with no notch, measured on a real one (NSScreen: 30 points, 13 point menu font):
-   no background (Tahoe draws it clear), white text and icons with a faint shadow, the same as kit.css .mb, the
-   Apple logo at 21, the bold app name at 52, 22 points between titles and between the status icons, the clock
-   23 points from the right edge */
+   no background (Tahoe draws it clear), white text and icons with only a wide faint glow, the same as kit.css .mb
+   (no filter: a tight dark halo looks jagged), the Apple logo at 21, the bold app name at 52, 22 points between
+   titles and between the status icons, the clock 23 points from the right edge */
 .hs-mb { position: absolute; left: 0; top: 0; right: 0; z-index: 8; display: flex; align-items: center; gap: 20px; height: 30px; padding: 0 21px 2px 19px;
-  color: #fff; font: 500 13px/16px var(--sys); white-space: nowrap; filter: drop-shadow(0 .5px 1px rgba(0, 0, 0, .22)); }
-.hs-mb b { font-weight: 700; margin-left: -2px; }
+  color: #fff; font: 500 13px/16px var(--sys); white-space: nowrap; text-shadow: 0 0 10px rgba(0, 0, 0, .14); }
+.hs-mb b { font-weight: 600; margin-left: -2px; }
 .hs-mb .hs-rt { margin-left: auto; display: flex; align-items: center; gap: 22px; }
 .hs-g { position: absolute; inset: 0; }
 
