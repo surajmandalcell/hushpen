@@ -17,7 +17,7 @@ use gpui_kit::component::{Sizable as _, Size};
 use gpui_kit::gpui::prelude::FluentBuilder as _;
 use gpui_kit::{
     AnyElement, App, AppContext as _, Context, Entity, ExternalDragPayload, ExternalPaths,
-    FileDragPaths, FocusHandle, InteractiveElement, IntoElement, ParentElement, Render,
+    FileDragPaths, FocusHandle, InteractiveElement, IntoElement, ParentElement, Render, Role,
     StatefulInteractiveElement, Styled, Transformation, Window, div, px, radians, svg,
 };
 use hushpen_core::export::Format;
@@ -461,6 +461,8 @@ fn queue(palette: Palette, import: &Entity<Import>, view: Snapshot) -> impl Into
                 .id(hook::id("import", "queue.keys"))
                 .key_context(extras::QUEUE_CONTEXT)
                 .track_focus(&view.queue_focus)
+                .role(Role::ListBox)
+                .aria_label("Files to transcribe")
                 .on_action(move |_: &QuickLook, _, cx| {
                     look_at_selected(&look, cx);
                 })

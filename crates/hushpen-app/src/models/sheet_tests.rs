@@ -8,8 +8,8 @@ use crate::theme::space;
 use crate::views::View;
 use gpui_kit::test::TestWindowExt as _;
 use gpui_kit::{
-    AnyWindowHandle, AppContext as _, Bounds, Point, TestAppContext, WindowBounds, WindowOptions,
-    px, size,
+    AnyWindowHandle, AppContext as _, Bounds, Point, ScrollDelta, TestAppContext, WindowBounds,
+    WindowOptions, point, px, size,
 };
 use hushpen_core::error::MODEL_NO_SPACE;
 use sha2::{Digest, Sha256};
@@ -477,6 +477,13 @@ fn the_details_sheet_shows_the_facts_and_its_actions_work(cx: &mut TestAppContex
         opened[1]
     );
 
+    // Copy sits below the sheet's scrolling middle at the least window height.
+    cx.update_window(handle, |_, window, cx| {
+        let down = ScrollDelta::Pixels(point(px(0.0), px(-400.0)));
+        window.scroll("models.sheet.scroll", down, cx)
+    })
+    .unwrap();
+    render(cx, handle);
     click(cx, handle, "models.sheet.copy");
     let copied = cx.read_from_clipboard().and_then(|item| item.text());
     assert_eq!(

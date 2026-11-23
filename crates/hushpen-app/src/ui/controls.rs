@@ -77,7 +77,11 @@ pub fn button<F: Fn(&mut Window, &mut App) + 'static>(
             .focus_visible(move |style| style.border_color(ring));
     }
     if enabled {
-        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| press(window, cx);
+        // A button inside a clickable row (a Transcribe file) must not click the row too.
+        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+            cx.stop_propagation();
+            press(window, cx)
+        };
         element = element
             .cursor_pointer()
             .hover(move |style| style.bg(hover))
@@ -248,7 +252,10 @@ fn icon_frame<F: Fn(&mut Window, &mut App) + 'static>(
         .border_color(gpui_kit::transparent_black());
     let element = super::tooltip(element, tooltip);
     if enabled {
-        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| press(window, cx);
+        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+            cx.stop_propagation();
+            press(window, cx)
+        };
         element
             .track_focus(focus)
             .focus_visible(move |style| style.border_color(palette.accent))
@@ -611,7 +618,10 @@ pub(super) fn menu_button<F: Fn(&mut Window, &mut App) + 'static>(
         .child(div().min_w_0().truncate().child(current))
         .child(glyph(palette, IconName::ChevronDown));
     if enabled {
-        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| toggle(window, cx);
+        let on_click = move |_: &ClickEvent, window: &mut Window, cx: &mut App| {
+            cx.stop_propagation();
+            toggle(window, cx)
+        };
         element = element
             .track_focus(focus)
             .cursor_pointer()

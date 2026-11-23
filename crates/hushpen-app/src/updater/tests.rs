@@ -348,8 +348,11 @@ fn a_count_rides_along_with_each_check_and_moves_the_day_and_month_after_success
     let rig = rig(cx);
     rig.set("updates.check", json!(true));
     rig.start(cx);
-    let platform =
-        Count::new(rig.now.get(), "", "").query(&Version::parse("2.0.0").unwrap(), Os::current());
+    // Share anonymous usage is on by default, so the first check of a day carries `u`.
+    let mut first = Count::new(rig.now.get(), "", "");
+    first.usage = rig.updater.read_with(cx, |me, _| me.shared_usage());
+    assert!(first.usage.is_some(), "a new day reports yesterday's usage");
+    let platform = first.query(&Version::parse("2.0.0").unwrap(), Os::current());
     assert_eq!(
         rig.checker.counts(),
         [platform],
@@ -397,7 +400,7 @@ fn a_count_rides_along_with_each_check_and_moves_the_day_and_month_after_success
     rig.now.set(rig.now.get() + 40 * 24 * HOUR_MS);
     rig.check_now(cx);
     assert!(
-        rig.checker.counts()[4].ends_with("&d=1&m=1"),
+        rig.checker.counts()[4].contains("&d=1&m=1"),
         "{:?}",
         rig.checker.counts()
     );

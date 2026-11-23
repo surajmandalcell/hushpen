@@ -8,7 +8,7 @@ use std::path::{Path, PathBuf};
 
 /// Where a token may be used: a file under `src`, the function that holds the use, the token.
 /// A use inside `focus_visible(..)` is a focus ring and is allowed anywhere.
-const ALLOWED: [(&str, &str, &str); 17] = [
+const ALLOWED: [(&str, &str, &str); 23] = [
     // The drop zone outlines in it while files are dragged over the window, as a drop target.
     ("import/panel.rs", "drop_zone", "accent"),
     // The default button fills with it; the plain button is a link and takes it for text.
@@ -41,6 +41,15 @@ const ALLOWED: [(&str, &str, &str); 17] = [
     ("devices/panel.rs", "reading", "success"),
     ("devices/panel.rs", "reading", "error"),
     ("devices/add.rs", "steps", "error"),
+    // Progress and data: the file stack on the drop card, a file's progress ring, the Home
+    // activity map, and the blue accuracy dots of a model row.
+    ("import/panel.rs", "stack", "accent"),
+    ("import/panel.rs", "item_row", "accent"),
+    ("home.rs", "map", "accent"),
+    ("models/panel.rs", "meters", "accent"),
+    // The "Show all" link of Home's Recent list, and the check a copied row shows for a moment.
+    ("home.rs", "recent_list", "accent"),
+    ("home.rs", "recent_row", "success"),
 ];
 
 const TOKENS: [&str; 4] = ["accent", "success", "warning", "error"];
