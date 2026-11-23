@@ -149,10 +149,10 @@
     '0000110000000202002222222221222222221', '000010020220202020022200120222220222-', '000000010000010000001000200111222201-', '000000000000000200022201120022002012-'];
   const CARDS = [['text-align-justify', 'Words', '<b data-k="num">50,707</b>', '2,676 this week'], ['gauge', 'Speed', '<b>149</b><small>wpm</small>', '3.7x your typing'],
     ['flame', 'Streak', '<b>12</b><small>days</small>', 'Best: 19 days'], ['hourglass', 'Time saved', '<b>15.4</b><small>h</small>', 'vs typing at 40 wpm']];
-  const RECENT = [['Running about ten minutes late for standup, start without me and I\'ll catch up on the notes after.', 'Today 11:32 · Slack · 7.3 s'],
-    ['Hi team, attached is the updated launch checklist. Please flag anything that looks off by Friday.', 'Today 11:05 · Mail · 6.7 s'],
-    ['Add a retry with exponential backoff to the upload function and log the final error if all three att...', 'Today 10:48 · Cursor · 8.5 s'],
-    ['Groceries for the weekend: oat milk, sourdough, two avocados, coffee beans, and something f...', 'Today 10:21 · Notes · 6.0 s']];
+  const RECENT = [['Running about ten minutes late for standup, start without me and I\'ll catch up on the notes after.', 'Today 11:32 · Slack · 7.3s'],
+    ['Hi team, attached is the updated launch checklist. Please flag anything that looks off by Friday.', 'Today 11:05 · Mail · 6.7s'],
+    ['Add a retry with exponential backoff to the upload function and log the final error if all three att...', 'Today 10:48 · Cursor · 8.5s'],
+    ['Groceries for the weekend: oat milk, sourdough, two avocados, coffee beans, and something f...', 'Today 10:21 · Notes · 6.0s']];
   const NAV = [['house', 'Home'], ['clock', 'History'], ['book-a', 'Dictionary'], ['cpu', 'Models'], ['smartphone', 'Devices'], ['settings', 'Settings'], ['info', 'About']];
   const HOME = `${TLS(2)}<b class="hp-name">Hushpen</b>
     <nav class="hp-nav">${NAV.map(([i, n], j) => `<span style="top:${48 + 30 * j}px"${j ? '' : ' class="on"'}>${LU(i)}${n}</span>`).join('')}</nav>

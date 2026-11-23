@@ -1,28 +1,30 @@
 // Home speed chart: draws the medians that home_chart.py writes into data-cmp. Smooth monotone lines (a curve
 // never dips past a real point), hover or tap one line or legend row to fade the rest, and one long camera
-// pull-out: it starts on the short clips, zoomed close, and pulls out to the 30 minute meeting, then eases back.
+// pull-out: it starts on the short clips, zoomed close, and pulls out to the 30 minute meeting, where a bracket
+// joins Hushpen N and MacWhisper with the real multiple, then eases back.
 (() => {
   const host = document.querySelector('[data-cmp]');
   if (!host) return;
-  const D = JSON.parse(host.dataset.cmp), XL = D.x, S = D.s, fig = host.closest('figure'), key = fig.querySelector('.cmp-key');
+  const D = JSON.parse(host.dataset.cmp), XL = D.x, S = D.s, LAST = XL.length - 1, fig = host.closest('figure'), key = fig.querySelector('.cmp-key');
   const svg = host.querySelector('svg'), cap = host.querySelector('.cmp-cap');
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const NS = 'http://www.w3.org/2000/svg';
   const el = (t, a, p) => { const e = document.createElementNS(NS, t); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; };
+  const cl = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v)), io = t => t < .5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2;
   const defs = el('defs', {}, svg);
   const clip = el('rect', {}, el('clipPath', { id: 'cmp-clip' }, defs)), clipA = el('rect', {}, el('clipPath', { id: 'cmp-axes' }, defs));
   const gY = el('g', { 'clip-path': 'url(#cmp-axes)' }, svg), gX = el('g', { 'clip-path': 'url(#cmp-axes)' }, svg);
-  const gL = el('g', { 'clip-path': 'url(#cmp-clip)' }, svg), gT = el('g', {}, svg), gH = el('g', {}, svg);
+  const gL = el('g', { 'clip-path': 'url(#cmp-clip)' }, svg), gT = el('g', {}, svg), gO = el('g', {}, svg), gH = el('g', {}, svg);
+  const fmt = v => (Number.isInteger(v) ? v : v < 10 ? v.toFixed(1) : Math.round(v)) + 's';
   const L = {};
   for (const s of S) {
-    const g = el('g', { class: 'ser', 'data-s': s.id }, gL);
+    const rv = !s.name.startsWith('Hushpen'), g = el('g', { class: 'ser' + (rv ? ' rv' : ''), 'data-s': s.id }, gL);
     const top = el('g', { class: 'top', opacity: 0 }, gT);
-    el('line', { x1: 0, x2: 10, y1: -4, y2: -4, stroke: s.c, 'stroke-width': 2.4, 'stroke-linecap': 'round' }, top);
-    el('text', { x: 15, class: 'tt' }, top).textContent = `${s.name} ${s.v[0]} s ↑`;
+    el('line', { x1: 0, x2: 10, y1: -4, y2: -4, stroke: s.c, 'stroke-opacity': rv ? .55 : 1, 'stroke-width': 2.4, 'stroke-linecap': 'round' }, top);
+    el('text', { x: 15, class: 'tt' }, top).textContent = `${s.name} ${fmt(s.v[0])} ↑`;
     L[s.id] = { s, g, top, to: 0, ln: el('path', { fill: 'none', stroke: s.c, 'stroke-width': s.w, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, g),
       dot: el('circle', { r: s.w + 1.2, fill: s.c }, g), hit: el('path', { class: 'hit', fill: 'none', 'data-s': s.id }, gH) };
   }
-  function fmt(v) { return (Number.isInteger(v) ? v : v < 10 ? v.toFixed(1) : Math.round(v)) + ' s'; }
 
   // Highlight one line: the rest drop to low opacity, and the picked one comes to the front.
   let pin = null;
@@ -38,14 +40,21 @@
   const tap = e => { const t = e.target.closest('[data-s]'); if (t) { pin = pin === t.dataset.s ? null : t.dataset.s; hl(pin); } };
   for (const n of [key, gH]) { n.addEventListener('pointerover', over); n.addEventListener('pointerleave', () => hl(pin)); n.addEventListener('click', tap); }
 
+  // Gap callout: a bracket from Hushpen N up to MacWhisper at 30 minutes, with the multiple from the data.
+  const N = S.find(s => s.id === 'n'), MW = S.find(s => s.id === 'macwhisper'), mult = (MW.v[LAST] / N.v[LAST]).toFixed(1) + 'x';
+  const br = el('path', { fill: 'none', stroke: '#007AFF', 'stroke-width': 1.6, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, gO);
+  const big = el('text', { class: 'gap-n' }, gO), sub = el('text', { class: 'gap-n' }, gO), sub2 = el('text', { class: 'gap-s' }, gO);
+  sub2.textContent = 'than MacWhisper';
+
   // Geometry in real pixels, so text stays crisp; the svg's size comes from CSS (aspect-ratio).
   let W = 0, H = 0, PL, PR, PT, PB, narrow;
   const size = () => {
     const r = svg.getBoundingClientRect(); W = Math.round(r.width); H = Math.round(r.height); narrow = W < 600;
-    PL = narrow ? 40 : 52; PR = narrow ? 18 : 26; PT = 10; PB = narrow ? 24 : 30;
+    PL = narrow ? 40 : 52; PR = narrow ? 92 : 150; PT = 10; PB = narrow ? 24 : 30;
     svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.setAttribute('font-size', narrow ? 11 : 13);
     clip.setAttribute('x', PL - 6); clip.setAttribute('y', PT - 6); clip.setAttribute('width', W - PL - PR + 12); clip.setAttribute('height', H - PT - PB + 8);
     clipA.setAttribute('x', -2); clipA.setAttribute('y', PT - 12); clipA.setAttribute('width', W + 2); clipA.setAttribute('height', H - PT + 12);
+    big.textContent = narrow ? mult : mult + ' faster'; sub.textContent = narrow ? 'faster' : '';
   };
 
   // Monotone cubic (Fritsch-Carlson): tangents are a weighted harmonic mean of the neighbouring slopes, 0 at a
@@ -73,7 +82,7 @@
     while (drop && mx[0] > 2.5 * mx[1]) mx.shift();
     return mx[0] * 1.15;
   };
-  let view = { x: XL.length - 1, y: top(XL.length - 1) };
+  let view = { x: LAST, y: top(LAST) }, gs = calm ? 1 : 0, gapOn = calm;
 
   function draw(snap, dt = 16) {
     if (!W) return;
@@ -116,21 +125,30 @@
       l.top.setAttribute('transform', `translate(${PL + 10} ${PT + 16 + row * 18})`);
       if (off) row++;
     }
+    // The bracket grows up from Hushpen N's dot once the full chart has landed; its text follows.
+    if (!calm) gs += ((gapOn ? 1 : 0) - gs) * (snap ? 1 : 1 - Math.exp(-dt / 280));
+    const x = X(LAST) + (narrow ? 12 : 18), yN = Y(N.v[LAST]), yM = Y(MW.v[LAST]), c = narrow ? 5 : 7, y1 = yN + (yM - yN) * io(gs), my = (yN + yM) / 2, a = cl(gs * 1.6 - .6).toFixed(3);
+    br.setAttribute('d', `M${x - c},${yN.toFixed(2)}H${x}V${y1.toFixed(2)}H${x - c}`); br.setAttribute('opacity', gs > .01 ? 1 : 0);
+    big.setAttribute('x', x + 7); big.setAttribute('y', my + (narrow ? -6 : -2)); big.setAttribute('font-size', narrow ? 20 : 22); big.setAttribute('opacity', a);
+    sub.setAttribute('x', x + 7); sub.setAttribute('y', my + 9); sub.setAttribute('font-size', 11); sub.setAttribute('opacity', a);
+    sub2.setAttribute('x', x + 7); sub2.setAttribute('y', my + (narrow ? 22 : 18)); sub2.setAttribute('font-size', narrow ? 10 : 12); sub2.setAttribute('opacity', a);
   }
 
   // The loop: hold on the short clips, one long pull-out that starts quick and settles slowly, hold on the full
-  // chart, then ease back. x and y move in log space with the same easing, so the zoom rate feels even.
+  // chart, then ease back. x and y move in log space with the same easing, so the zoom rate feels even, and the
+  // way back ends at rest on the start frame, so the next pull-out starts without a jump.
   const bez = (x1, y1, x2, y2) => t => { // CSS cubic-bezier: solve x for t by Newton steps, then return y
     let u = t; for (let i = 0; i < 6; i++) { const x = 3 * x1 * u * (1 - u) ** 2 + 3 * x2 * u * u * (1 - u) + u ** 3 - t, dx = 3 * x1 * (1 - u) ** 2 + 6 * (x2 - x1) * u * (1 - u) + 3 * (1 - x2) * u * u; if (Math.abs(dx) < 1e-6) break; u -= x / dx; }
     return 3 * y1 * u * (1 - u) ** 2 + 3 * y2 * u * u * (1 - u) + u ** 3;
   };
-  const out = bez(0.3, 0.15, 0.2, 1), back = bez(0.65, 0, 0.35, 1), lg = (a, b, e) => Math.exp(Math.log(a) + (Math.log(b) - Math.log(a)) * e);
-  const A = { x: 1, y: top(1, true), say: 'A 5 second note' }, Z = { x: XL.length - 1, y: top(XL.length - 1), say: 'Up to a 30 minute meeting' };
-  const SEG = [[A, A, 500], [A, Z, 6500, out], [Z, Z, 3000], [Z, A, 1700, back]], TOTAL = SEG.reduce((a, s) => a + s[2], 0);
+  const out = bez(0.4, 0, 0.2, 1), back = bez(0.6, 0, 0.3, 1), lg = (a, b, e) => Math.exp(Math.log(a) + (Math.log(b) - Math.log(a)) * e);
+  const A = { x: 1, y: top(1, true), say: 'A 5 second note' }, Z = { x: LAST, y: top(LAST), say: 'Up to a 30 minute meeting' };
+  const SEG = [[A, A, 700], [A, Z, 5000, out], [Z, Z, 3200], [Z, A, 2300, back]], TOTAL = SEG.reduce((a, s) => a + s[2], 0);
   const at = ms => {
     let r = ms % TOTAL;
-    for (const [a, b, d, f] of SEG) {
-      if (r <= d) { const e = f ? f(r / d) : 0; return { x: lg(a.x, b.x, e), y: lg(a.y, b.y, e), say: (e < 0.2 ? a : b).say }; }
+    for (let i = 0; i < SEG.length; i++) {
+      const [a, b, d, f] = SEG[i];
+      if (r <= d) { const e = f ? f(r / d) : 0; return { x: lg(a.x, b.x, e), y: lg(a.y, b.y, e), say: (e < 0.2 ? a : b).say, gap: i === 2 }; }
       r -= d;
     }
   };
@@ -139,11 +157,12 @@
     if (txt === said) return; said = txt;
     const [a, b] = cap.children; a.textContent = txt; a.className = 'in'; b.className = ''; cap.append(a);
   };
+  const put = v => { view = { x: v.x, y: v.y }; gapOn = v.gap; say(v.say); };
   let t = 0, last = 0, raf = 0, seen = false, held = false;
   const frame = now => {
     const dt = Math.min(64, now - (last || now)); last = now;
     if (!held) t += dt;
-    const v = at(t); view = { x: v.x, y: v.y }; say(v.say);
+    put(at(t));
     draw(false, dt);
     raf = requestAnimationFrame(frame);
   };
@@ -152,7 +171,7 @@
     if (go && !raf) { last = 0; raf = requestAnimationFrame(frame); }
     if (!go && raf) { cancelAnimationFrame(raf); raf = 0; }
   };
-  if (!calm) { const v = at(0); view = { x: v.x, y: v.y }; say(v.say); }
+  if (!calm) put(at(0));
   size(); draw(true);
   new ResizeObserver(() => { const w = Math.round(svg.getBoundingClientRect().width); if (w !== W) { size(); draw(true); } }).observe(svg);
   new IntersectionObserver(([e]) => { seen = e.isIntersecting; run(); }).observe(svg);

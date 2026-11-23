@@ -63,8 +63,13 @@
 .cmp-key li[data-m]::after { content: attr(data-m); position: absolute; left: -6px; bottom: calc(100% + 6px); z-index: 2; padding: 4px 8px; border-radius: 7px; background: #1C1C1E; color: #fff; font-size: 12px; font-weight: 500; white-space: nowrap; pointer-events: none; opacity: 0; transform: translateY(2px); transition: opacity .18s ease, transform .18s ease; }
 .cmp-key li.on[data-m]::after { opacity: 1; transform: none; }
 .cmp-key li.r[data-m]::after { left: auto; right: -6px; }
-/* Coral marks the reading rule, so nobody reads a low line as a bad result. #C2452D on the tint is 4.5:1. */
-.cmp-low { display: inline-block; padding: 0 7px; border-radius: 6px; background: #FFF0EA; color: #C2452D; font-weight: 600; white-space: nowrap; }
+/* Blue marks the reading rule, so nobody reads a low line as a bad result. #0071E3 is 4.7:1 on white. */
+.cmp-low { color: #0071E3; font-weight: 600; white-space: nowrap; }
+/* Rival lines: one gray at lower opacity; a picked rival comes up to full. */
+.cmp-plot .ser.rv path, .cmp-plot .ser.rv circle { stroke-opacity: .55; fill-opacity: .55; transition: stroke-opacity .22s ease, fill-opacity .22s ease; }
+.cmp-plot .ser.rv.on path, .cmp-plot .ser.rv.on circle { stroke-opacity: 1; fill-opacity: 1; }
+.cmp-plot .gap-n { fill: #007AFF; font-weight: 700; }
+.cmp-plot .gap-s { fill: var(--ink2); }
 /* Zoom label over the chart: two stacked spans crossfade; its height is kept, so nothing moves. */
 .cmp-cap { position: relative; height: 20px; margin: 0 0 6px; font-size: 13px; font-weight: 600; letter-spacing: -.01em; color: var(--ink2); }
 @media (prefers-reduced-motion: reduce) { .cmp-cap { display: none; } }

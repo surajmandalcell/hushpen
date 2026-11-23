@@ -57,7 +57,7 @@
   }
 
   // Real-time with Hushpen N (Nemotron Unified): words land at talking speed (about 150 a minute). The newest word is a guess (gray)
-  // until the next one comes; the last one settles 0.30 s after you stop, the measured time in benchmarks.html.
+  // until the next one comes; the last one settles 0.30s after you stop, the measured time in benchmarks.html.
   const rt = document.querySelector('[data-rt]');
   if (rt) {
     const SAID = ['Can we move the design review to Thursday afternoon?', 'I will bring the new numbers.'];

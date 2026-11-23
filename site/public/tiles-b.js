@@ -40,18 +40,18 @@
 
   // History: search "invoice", open the row, see what each pass made, export SRT
   const HIST = [
-    ['clock', 'Send the invoice to Elena tomorrow.', '2025-06-01 09:15 · Mail · 2.4 s · Pasted', 1],
-    ['clock', 'Remind me to call the dentist on Thursday.', '2025-06-01 08:52 · Firefox · 2.7 s · Copied only'],
+    ['clock', 'Send the invoice to Elena tomorrow.', '2025-06-01 09:15 · Mail · 2.4s · Pasted', 1],
+    ['clock', 'Remind me to call the dentist on Thursday.', '2025-06-01 08:52 · Firefox · 2.7s · Copied only'],
     ['volume', 'The meeting moved to Friday at ten.', '2025-06-01 08:30 · Read aloud · Kokoro · Heart with 30% Adam'],
-    ['clock', 'Thanks for the quick reply. The invoice is attached.', '2025-06-01 07:15 · Slack · 3.4 s · Pasted', 1],
-    ['alert', 'The recording could not be read', '2025-06-01 06:15 · Firefox · 4.1 s · Failed'],
-    ['x', 'Not transcribed', '2025-06-01 04:15 · Firefox · 5.5 s · Canceled'],
-    ['clock', 'The quarterly numbers look fine, but the chart needs a title.', '2025-06-01 03:15 · Numbers · 6.2 s · Pasted'],
+    ['clock', 'Thanks for the quick reply. The invoice is attached.', '2025-06-01 07:15 · Slack · 3.4s · Pasted', 1],
+    ['alert', 'The recording could not be read', '2025-06-01 06:15 · Firefox · 4.1s · Failed'],
+    ['x', 'Not transcribed', '2025-06-01 04:15 · Firefox · 5.5s · Canceled'],
+    ['clock', 'The quarterly numbers look fine, but the chart needs a title.', '2025-06-01 03:15 · Numbers · 6.2s · Pasted'],
   ];
   const hrow = ([i, t, s], c = '', inner = '') => row(`${ico(i, 'tb-lead')}${tt(t, s)}${inner}`, c);
   const field = (inner, c = '') => `<span class="tb-f ${c}">${ico('search')}${inner}</span>`;
   const searchRow = inner => row(`${field(inner, 'foc')}${btn('Select', 'tb-opt')}${btn('Clear all')}`, 'tb-sr');
-  const META = '2025-06-01 09:15 · Mail · 2.4 s · Pasted';
+  const META = '2025-06-01 09:15 · Mail · 2.4s · Pasted';
   const topRow = row(`${btn('Back')}<small class="tb-meta">${META}</small>${ib('clip')}${ib('copy')}`, 'tb-dt');
   const RAW = 'um send the the invoice to elena tomorrow', FIN = 'Send the invoice to Elena tomorrow.';
   const hi = {
@@ -68,7 +68,7 @@
         topRow +
         row(`<b class="tb-rt">Recording</b>${ib('share')}${ib('refresh')}${ib('trash')}`, 'tb-a', '--t:40ms') +
         row(`${ib('pause')}<i class="tb-seek"><b></b></i><small class="tb-tm">0:01 / 0:02</small>`, 'tb-a tb-pl', '--t:80ms') +
-        kv('Raw text', RAW, 160) + kv('After the rules', FIN, 300) + kv('Final text', FIN, 440) + kv('App', 'Mail', 520) + kv('Duration', '2.4 s', 580)
+        kv('Raw text', RAW, 160) + kv('After the rules', FIN, 300) + kv('Final text', FIN, 440) + kv('App', 'Mail', 520) + kv('Duration', '2.4s', 580)
       ))) },
       { cap: 'Export', ms: 1800, focus: [70, 42], html: shot(460, 300, bar('History') + pane(grp(
         topRow +
