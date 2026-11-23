@@ -17,7 +17,7 @@ main.bx { padding-bottom: 96px; }
 .b-how { display: inline-block; margin-top: 10px; font-size: 15px; color: var(--acc); opacity: .72;
   text-decoration: underline dotted; text-decoration-thickness: 1px; text-underline-offset: 4px; transition: opacity .15s; }
 .b-how:hover, .b-how:focus-visible { opacity: 1; }
-/* Top numbers: one white card, number left, label right (owner pick B, round 2) */
+/* Top numbers: one white card, number left, label right */
 .b-stats { display: grid; grid-template-columns: repeat(3, 1fr); padding: 4px 0; border-radius: 20px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
 .b-stats li { display: grid; grid-template-columns: auto 1fr; column-gap: 16px; align-items: center; padding: 18px 24px; }
 .b-stats li + li { box-shadow: inset .5px 0 0 var(--line2); }

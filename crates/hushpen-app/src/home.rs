@@ -323,7 +323,7 @@ impl Home {
         let wpm = stats.wpm();
         let streak = up(stats.streak);
         let (saved_number, saved_unit) = saved(stats.saved_minutes() * f64::from(count));
-        // (hook key, icon, label, number, unit, secondary line), as in the owner pick B1.
+        // (hook key, icon, label, number, unit, secondary line).
         let tiles = [
             (
                 "words",
