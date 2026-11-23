@@ -1,4 +1,4 @@
-/* Why Hushpen, Free section (.wm-v): "Follow the words". Teams and Slack tiled on a Mac screen, you talk, Hushpen
+/* Home page hero (.hv-wm): "Follow the words". Teams and Slack tiled on a Mac screen, you talk, Hushpen
    types the cleaned text, then Home counts the words. The world is a 1512 by 945 point Mac screen with no notch.
    Every window is laid out at true points, and the whole world is shrunk once with CSS zoom (why-m.js), so layout
    runs at the final size. Hairlines are real borders, never scaled box-shadows. */
@@ -7,7 +7,9 @@
 @font-face { font-family: "Lato"; src: url(assets/fonts/lato-900.woff2) format("woff2"); font-weight: 900; font-display: swap; }
 /* A 16:10 screen, not the 4:3 of the other Why boxes. The fill is the wallpaper's sky, so a part pixel at any edge of
    the moving camera never shows a light line. */
-.why-v.wm-v { aspect-ratio: 1512 / 945; align-self: center; background: #6E9BD6; }
+.hv-wm { position: relative; overflow: hidden; aspect-ratio: 1512 / 945; border-radius: 26px; background: #6E9BD6; box-shadow: 0 0 0 .5px var(--line); isolation: isolate; }
+/* On a phone the screen is only about 360 px wide, so a smaller corner keeps the Apple logo and the clock in view */
+@media (max-width: 640px) { .hv-wm { border-radius: 12px; } .hv-wm .hs-mb { padding: 0 32px 2px 34px; } }
 .hs-st { --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; --app: "Inter", var(--sys); --lato: "Lato", var(--sys);
   position: absolute; inset: 0; width: auto; height: auto; overflow: hidden; background: none; color: #1C1C1C; font: 400 13px/1.35 var(--sys);
   text-align: left; letter-spacing: 0; -webkit-font-smoothing: antialiased; }
@@ -22,10 +24,11 @@
    moving camera never shows a gap at the box edge. */
 .hs-bg { position: absolute; left: -12px; top: -12px; width: 1536px; height: 969px; max-width: none; max-height: none; object-fit: cover; will-change: transform; }
 /* macOS menu bar on a screen with no notch, measured on a real one (NSScreen: 30 points, 13 point menu font):
-   no background (Tahoe draws it clear), dark text over a light wallpaper, the Apple logo at 21, the bold app name
-   at 52, 22 points between titles and between the status icons, the clock 23 points from the right edge */
+   no background (Tahoe draws it clear), white text and icons with a faint shadow, the same as kit.css .mb, the
+   Apple logo at 21, the bold app name at 52, 22 points between titles and between the status icons, the clock
+   23 points from the right edge */
 .hs-mb { position: absolute; left: 0; top: 0; right: 0; z-index: 8; display: flex; align-items: center; gap: 20px; height: 30px; padding: 0 21px 2px 19px;
-  color: rgba(0, 0, 0, .85); font: 500 13px/16px var(--sys); white-space: nowrap; }
+  color: #fff; font: 500 13px/16px var(--sys); white-space: nowrap; filter: drop-shadow(0 .5px 1px rgba(0, 0, 0, .22)); }
 .hs-mb b { font-weight: 700; margin-left: -2px; }
 .hs-mb .hs-rt { margin-left: auto; display: flex; align-items: center; gap: 22px; }
 .hs-g { position: absolute; inset: 0; }

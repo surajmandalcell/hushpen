@@ -1,4 +1,4 @@
-/* The hero (hw.js, hw-win.js): a 1280 by 720 Mac desktop in a rounded scene on the page; hw.js scales and
+/* Why Hushpen, Free forever section (hw.js, hw-win.js): a 1280 by 720 Mac desktop in a rounded scene on the page; hw.js scales and
    moves it as a camera. Its stage holds one window, or two while they change. */
 @font-face { font-family: "hw-roboto"; src: url(assets/fonts/roboto-400.woff2) format("woff2"); font-weight: 400; font-display: swap; }
 @font-face { font-family: "hw-roboto"; src: url(assets/fonts/roboto-500.woff2) format("woff2"); font-weight: 500; font-display: swap; }
@@ -8,6 +8,10 @@
 .hw-st { position: relative; overflow: hidden; aspect-ratio: 16 / 9; border-radius: 26px; background: #8EC5F2; box-shadow: 0 0 0 .5px var(--line); isolation: isolate; }
 .hw-dk { position: absolute; left: 0; top: 0; width: 1280px; height: 720px; overflow: hidden; transform-origin: 0 0; background: #8EC5F2 url(assets/wall-blossom.webp) center / cover no-repeat; text-align: left; user-select: none; -webkit-user-select: none; }
 .hw-dk > .mb { position: relative; z-index: 3; }
+/* In the Free section's box the stage sets its own shape, so the 4:3 white box steps aside */
+.why-v.hw-v { aspect-ratio: auto; align-self: center; background: none; box-shadow: none; }
+/* The box is small here, so its round corners would cut the Apple logo and the clock: the bar keeps clear of them */
+.hw-v .hw-dk > .mb { padding: 0 34px 2px 42px; }
 .hw-stage { position: absolute; inset: 34px 0 44px; display: grid; place-items: center; }
 .hw-stage > .hw-w { grid-area: 1 / 1; }
 /* The flow bar where Hushpen puts it, at the bottom middle of the screen, at the window's scale */

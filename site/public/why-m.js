@@ -1,8 +1,8 @@
-// Why Hushpen, Free section: "Follow the words". Microsoft Teams and Slack tiled on a Mac screen, a camera that
+// Home page hero: "Follow the words". Microsoft Teams and Slack tiled on a Mac screen, a camera that
 // pushes in on the flow bar and the message box while you talk, then the Hushpen Home counting the words. Each
 // frame is a pure function of the loop time t (ms); only the flow bar eases on its own. It plays only while the
-// box is on screen; Reduce Motion shows the whole desktop with Home. <div class="hs-st" data-wm> inside a
-// .why-v.wm-v. ?t=1234 freezes it at that time, for screenshots.
+// box is on screen; Reduce Motion shows the whole desktop with Home. <div class="hs-st" data-wm> inside the
+// hero .hv-wm. ?t=1234 freezes it at that time, for screenshots.
 (() => {
   if (!document.querySelector('[data-wm]') || !window.FlowBar || !window.WM_ICONS) return;
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;

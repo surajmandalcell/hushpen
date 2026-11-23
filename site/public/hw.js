@@ -1,4 +1,4 @@
-// The hero: one Mac desktop on the page that plays the windows of hw-win.js in a row and loops. For each
+// Why Hushpen, Free forever section: one Mac desktop on the page that plays the windows of hw-win.js in a row and loops. For each
 // window a camera starts wide on the desktop, closes in on the text field and the flow bar while Option + Tab
 // starts hands-free and the words come in, then pulls back to the window for the clean text and what the
 // app does with it. The flow bar is the real 28 pt capsule at the window's scale, so it looks big only
