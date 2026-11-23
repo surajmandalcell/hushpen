@@ -680,7 +680,7 @@ pub(super) fn scale(halves: u8, words: [&str; 5]) -> String {
         .get(usize::from((halves / 2).saturating_sub(1)))
         .copied()
         .unwrap_or_default();
-    let dots = if halves % 2 == 0 {
+    let dots = if halves.is_multiple_of(2) {
         (halves / 2).to_string()
     } else {
         format!("{}.5", halves / 2)

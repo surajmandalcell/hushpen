@@ -121,9 +121,9 @@ impl Input {
         if bytes.is_empty() || bytes.len() > 64 * 1024 || !bytes.len().is_multiple_of(2) {
             return Err(invalid("invalid live PCM frame"));
         }
-        for pair in bytes.chunks_exact(2) {
+        for pair in bytes.as_chunks::<2>().0 {
             self.writer
-                .write_sample(i16::from_le_bytes([pair[0], pair[1]]))
+                .write_sample(i16::from_le_bytes(*pair))
                 .map_err(io::Error::other)?;
         }
         self.writer.flush().map_err(io::Error::other)

@@ -52,6 +52,7 @@ impl Capture {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn start(
         self,
         route: Routing,

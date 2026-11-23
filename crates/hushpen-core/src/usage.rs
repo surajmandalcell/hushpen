@@ -55,7 +55,7 @@ impl Usage {
 
     /// Reads a number back, as the update API does. `None` for another format version.
     pub fn from_number(number: u32) -> Option<Self> {
-        (number >> 26 == VERSION).then(|| Self {
+        (number >> 26 == VERSION).then_some(Self {
             uses: number & MAX_USES,
             slots: (number >> 10) as u16,
         })
