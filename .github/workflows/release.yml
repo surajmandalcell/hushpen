@@ -44,6 +44,11 @@ jobs:
             echo "::error::tag '$TAG' is not vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N"
             exit 1
           fi
+          base="${TAG#v}"
+          if ! grep -qx "version = \"${base%%-rc.*}\"" Cargo.toml; then
+            echo "::error::tag '$TAG' does not match the version in Cargo.toml"
+            exit 1
+          fi
           if [ -z "$HUSHPEN_UPDATE_KEY" ]; then
             echo "::error::the repository secret HUSHPEN_UPDATE_KEY is not set"
             exit 1
