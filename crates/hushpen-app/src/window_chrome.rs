@@ -58,12 +58,15 @@ fn height_to_save(current: f32, saved: f32, screen: f32) -> Option<i64> {
 }
 
 /// The width and height limits the platform gives the native window.
-/// `frame` is what a client-decorated window adds on both sides (see `frame`).
-pub fn size_limits(screen: f32, frame: f32) -> SizeLimits {
+/// `frame` is what a client-decorated window adds on both sides (see `frame`). `scale` turns
+/// points into the units the platform reads: X11 size hints are device pixels, while AppKit
+/// takes points and Win32 scales by the window's DPI itself, so those pass 1.
+pub fn size_limits(screen: f32, frame: f32, scale: f32) -> SizeLimits {
+    let units = |points: f32| (points * scale).round() as u16;
     SizeLimits {
-        width: (space::WINDOW_WIDTH + frame) as u16,
-        min_height: (space::WINDOW_HEIGHT + frame) as u16,
-        max_height: (max_height(screen) + frame) as u16,
+        width: units(space::WINDOW_WIDTH + frame),
+        min_height: units(space::WINDOW_HEIGHT + frame),
+        max_height: units(max_height(screen) + frame),
     }
 }
 
@@ -431,18 +434,24 @@ mod tests {
     #[test]
     fn the_native_limits_keep_the_width_and_cap_the_height() {
         assert_eq!(
-            size_limits(1440.0, 0.0),
+            size_limits(1440.0, 0.0, 1.0),
             SizeLimits {
                 width: 940,
                 min_height: 600,
                 max_height: 900
             }
         );
-        assert_eq!(size_limits(750.0, 0.0).max_height, 750);
-        let framed = size_limits(1440.0, 40.0);
+        assert_eq!(size_limits(750.0, 0.0, 1.0).max_height, 750);
+        let framed = size_limits(1440.0, 40.0, 1.0);
         assert_eq!(
             (framed.width, framed.min_height, framed.max_height),
             (980, 640, 940)
+        );
+        // An X11 screen at scale 2 reads the hints in device pixels: the window stays 940 points.
+        let retina = size_limits(1440.0, 40.0, 2.0);
+        assert_eq!(
+            (retina.width, retina.min_height, retina.max_height),
+            (1960, 1280, 1880)
         );
     }
 

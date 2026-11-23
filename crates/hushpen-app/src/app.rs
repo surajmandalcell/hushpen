@@ -905,9 +905,15 @@ fn place_traffic_lights(window: &Window) {
 }
 
 fn lock_native_chrome(window: &Window, screen: f32) {
+    // Only X11 reads the limits in device pixels (see `size_limits`).
+    let scale = if cfg!(target_os = "linux") {
+        window.scale_factor()
+    } else {
+        1.0
+    };
     if let Err(error) = lock_chrome(
         native_handle(window),
-        size_limits(screen, crate::window_chrome::frame(window)),
+        size_limits(screen, crate::window_chrome::frame(window), scale),
     ) {
         log::warn!("could not lock the window chrome: {error}");
     }
