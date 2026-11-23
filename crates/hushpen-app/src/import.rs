@@ -1010,7 +1010,8 @@ pub(crate) async fn pick_files(cx: &mut gpui_kit::AsyncApp) -> Option<Vec<PathBu
     pick(cx, false).await
 }
 
-/// The picker; `directories` lets the user pick folders too.
+/// The picker; `directories` lets the user pick folders too, where the system picker can show
+/// files and folders at once. Windows can't: there, asking for folders hides every file.
 async fn pick(cx: &mut gpui_kit::AsyncApp, directories: bool) -> Option<Vec<PathBuf>> {
     #[cfg(feature = "test-automation")]
     if let Some(paths) = hushpen_testhook::dialogs::take_answer() {
@@ -1019,7 +1020,7 @@ async fn pick(cx: &mut gpui_kit::AsyncApp, directories: bool) -> Option<Vec<Path
     let asked = cx.update(|cx| {
         cx.prompt_for_paths(gpui_kit::PathPromptOptions {
             files: true,
-            directories,
+            directories: directories && cx.can_select_mixed_files_and_dirs(),
             multiple: true,
             prompt: None,
         })
