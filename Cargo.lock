@@ -3673,6 +3673,7 @@ dependencies = [
  "hushpen-store",
  "hushpen-testhook",
  "image",
+ "indiecrumb",
  "log",
  "minisign-verify",
  "objc2-foundation 0.3.2",
@@ -4137,6 +4138,19 @@ dependencies = [
  "hashbrown 0.17.1",
  "serde",
  "serde_core",
+]
+
+[[package]]
+name = "indiecrumb"
+version = "0.2.0"
+source = "git+https://github.com/samhqapp/indiecrumb-rs?tag=v0.2.0#a1b826418f431c5fecd51515584d658546f73913"
+dependencies = [
+ "backtrace",
+ "getrandom 0.3.4",
+ "gpui-kit",
+ "serde",
+ "serde_json",
+ "ureq",
 ]
 
 [[package]]

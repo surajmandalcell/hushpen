@@ -86,6 +86,8 @@ pub fn host_allowed(host: &str) -> bool {
             | "hf.co"
             | "github.com"
             | "githubusercontent.com"
+            // Crash reports, only after the person presses Send (net/crash.rs).
+            | "crumb.samhq.app"
             // The website About opens in the browser; the app never fetches it.
             | "hushpen.samhq.app"
             // Old installs still call the previous website domain.

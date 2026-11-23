@@ -1,6 +1,7 @@
 //! Desktop network services and the shared download service.
 //! `xtask net-audit` lists every call site with its purpose and host.
 
+pub mod crash;
 pub mod devices;
 pub mod endpoint;
 pub mod tunnel;

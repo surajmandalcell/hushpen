@@ -51,6 +51,7 @@ gpui-tray.workspace = true
 gpui-pre-wgpu = { workspace = true, features = ["test-support"], optional = true }
 # Draws the About window's color field from the app icon; GPUI already links it.
 image.workspace = true
+indiecrumb.workspace = true
 log.workspace = true
 minisign-verify.workspace = true
 raw-window-handle.workspace = true

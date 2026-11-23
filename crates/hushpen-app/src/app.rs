@@ -98,6 +98,7 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let crash = crate::net::crash::start(data.root());
     if let Err(error) = storage::install_logger(&data) {
         eprintln!("hushpen: could not start the log: {error}");
     }
@@ -196,6 +197,9 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
                 }
             };
             crate::window_chrome::follow_compositor(cx);
+            if let Some(crash) = &crash {
+                crate::net::crash::ask(crash, cx);
+            }
             // Close hides the window to the tray, or minimizes it when no tray can bring it
             // back; only the tray's Quit ends the app. If the window is ever closed for real
             // with no way to open it again, the app ends with it. The flow bar opens and
