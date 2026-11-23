@@ -30,3 +30,4 @@ data/
 # Local work ledger
 /goals.md
 /goals.archive.md
+.serena/
