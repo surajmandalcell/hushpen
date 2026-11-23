@@ -25,7 +25,7 @@
 /* Home: three "4x faster" tiles, then the chart card at the same width */
 .pf-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .pf-tile { padding: 26px 28px 24px; border-radius: 28px; background: #fff; box-shadow: 0 0 0 .5px var(--line); }
-.pf-tile b { display: block; font: 700 64px/1 var(--sans); letter-spacing: -.04em; color: var(--acc); }
+.pf-tile b { display: block; font: 700 64px/1 var(--sans); letter-spacing: -.04em; }
 .pf-tile p { margin-top: 8px; font-size: 19px; font-weight: 600; letter-spacing: -.01em; }
 .pf-tile small { display: block; margin-top: 6px; font-size: 14px; color: var(--ink2); }
 .grp[data-g="speed"] .cmp-card { margin-top: 20px; }
