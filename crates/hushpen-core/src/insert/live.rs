@@ -162,7 +162,7 @@ pub fn untyped_suffix<'a>(typed: &str, raw_final: &'a str) -> Option<&'a str> {
             last = candidates.into_iter().nth(consumed - 1);
         }
     }
-    let Some(last) = last else { return None };
+    let last = last?;
     let mut end = last.end;
     if let Some(typed) = typed.last().filter(|word| word.key == last.key) {
         let punctuation = |word: &str| word.trim_end_matches(|c: char| !c.is_alphanumeric()).len();

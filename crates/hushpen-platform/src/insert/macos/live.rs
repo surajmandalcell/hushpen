@@ -106,9 +106,7 @@ fn editable_focus(target: &Target) -> Option<CFType> {
     }
     let field = focused(target)?;
     match guard::read_attribute(&field, "AXSubrole") {
-        Ok(value) if value.downcast::<CFString>()?.to_string() != "AXSecureTextField" => {
-            Some(field)
-        }
+        Ok(value) if value.downcast::<CFString>()? != "AXSecureTextField" => Some(field),
         Err(ATTRIBUTE_UNSUPPORTED | NO_VALUE) => Some(field),
         _ => None,
     }
@@ -265,7 +263,10 @@ impl LiveSpan for Span {
         );
         let caret = CFRange::init(self.caret.location - units + added, 0);
         let mut expected = self.expected.clone();
-        expected.replace_range(self.draft.start + start..self.draft.start + end, replacement);
+        expected.replace_range(
+            self.draft.start + start..self.draft.start + end,
+            replacement,
+        );
         let value = CFString::new(replacement);
         if !self.unchanged() {
             return Err(LiveError::Changed);
