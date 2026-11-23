@@ -4142,13 +4142,16 @@ dependencies = [
 
 [[package]]
 name = "indiecrumb"
-version = "0.3.0"
-source = "git+https://github.com/samhqapp/indiecrumb-rs?tag=v0.3.0#590f1f49d5d04516f535150eb2a7832311b5b9b3"
+version = "0.3.1"
+source = "git+https://github.com/samhqapp/indiecrumb-rs?tag=v0.3.1#5843120bc3b6b0f808b15f1d5bedf6efc187b70e"
 dependencies = [
  "backtrace",
  "getrandom 0.3.4",
  "gpui-kit",
  "libc",
+ "objc2 0.6.4",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
  "serde",
  "serde_json",
  "ureq",
