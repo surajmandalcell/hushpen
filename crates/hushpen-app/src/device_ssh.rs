@@ -238,6 +238,12 @@ fn read_output(mut command: Command, cancelled: &AtomicBool) -> io::Result<Strin
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
+    #[cfg(windows)]
+    {
+        // CREATE_NO_WINDOW: ssh.exe opens no console window beside the app.
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000);
+    }
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -312,6 +318,11 @@ pub fn setup(
     {
         use std::os::unix::process::CommandExt;
         command.process_group(0);
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
     let mut child = command
         .args([

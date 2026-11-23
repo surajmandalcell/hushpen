@@ -126,7 +126,14 @@ impl Link {
         match self {
             Self::InProcess(server) => server.open(),
             Self::Child(spec) => {
-                let mut child = Command::new(&spec.program)
+                let mut command = Command::new(&spec.program);
+                #[cfg(windows)]
+                {
+                    // CREATE_NO_WINDOW: a worker of the windowless app opens no console window.
+                    use std::os::windows::process::CommandExt;
+                    command.creation_flags(0x0800_0000);
+                }
+                let mut child = command
                     .args(&spec.args)
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())

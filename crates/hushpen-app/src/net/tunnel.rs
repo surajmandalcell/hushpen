@@ -134,6 +134,11 @@ fn start(host: &str, remote_port: u16) -> io::Result<Running> {
         // A Ctrl-C in the terminal that started Hushpen must not end the tunnel by itself.
         command.process_group(0);
     }
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
     command
         .args([
             "-T",

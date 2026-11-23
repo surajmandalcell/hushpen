@@ -1,4 +1,6 @@
 //! Hushpen desktop app.
+// A release build opens no console window beside the app on Windows.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 use hushpen_app::cli::{self, Command};
 use std::process::ExitCode;
