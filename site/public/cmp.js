@@ -18,7 +18,7 @@
     const g = el('g', { class: 'ser', 'data-s': s.id }, gL);
     const top = el('g', { class: 'top', opacity: 0 }, gT);
     el('line', { x1: 0, x2: 10, y1: -4, y2: -4, stroke: s.c, 'stroke-width': 2.4, 'stroke-linecap': 'round' }, top);
-    el('text', { x: 15, class: 'tt' }, top).textContent = `${s.name} ${fmt(s.v[0])} ↑`;
+    el('text', { x: 15, class: 'tt' }, top).textContent = `${s.name} ${s.v[0]} s ↑`;
     L[s.id] = { s, g, top, to: 0, ln: el('path', { fill: 'none', stroke: s.c, 'stroke-width': s.w, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, g),
       dot: el('circle', { r: s.w + 1.2, fill: s.c }, g), hit: el('path', { class: 'hit', fill: 'none', 'data-s': s.id }, gH) };
   }
