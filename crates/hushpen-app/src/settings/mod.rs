@@ -261,10 +261,8 @@ impl Settings {
         self.updates_changed(cx);
     }
 
-    /// Turns the IndieCrumb daily counts on or off.
     pub fn toggle_share_usage(&mut self, cx: &mut Context<Self>) {
-        self.flip(crate::net::usage::SHARE, cx);
-        crate::net::usage::set_enabled(self.stored_bool(crate::net::usage::SHARE));
+        self.flip(crate::updater::SHARE_USAGE, cx);
     }
 
     fn updates_changed(&mut self, cx: &mut Context<Self>) {

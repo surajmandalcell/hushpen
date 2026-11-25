@@ -21,7 +21,8 @@ pub fn check_due(last_check_ms: u64, now_ms: u64) -> bool {
 /// day (`YYYY-MM-DD`) and month (`YYYY-MM`) of this check, and whether each is new. The app
 /// keeps the last counted day and month and moves them only after the server answered 2xx.
 /// Days are UTC, because the app cannot read the local time zone without unsafe code.
-/// `usage` is the anonymous usage of yesterday, which the first check of a day sends.
+/// `usage` is the anonymous usage of yesterday, which the first check of a day sends
+/// while "Share anonymous usage" is on.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Count {
     pub day: String,

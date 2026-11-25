@@ -4,7 +4,7 @@
 //! at once when the user presses Check now. Check for Updates in About runs one check even while
 //! the switch is off, and leaves the switch off. A check sends no identifier. While the switch is
 //! on, each check also sends the anonymous count of [`Count`] to the shared update API, and the
-//! first one of a day adds the usage of yesterday.
+//! first one of a day adds the usage of yesterday while "Share anonymous usage" is on.
 //!
 //! What an offered version leads to depends on how this copy was installed. A macOS app or an
 //! AppImage downloads the file of the signed manifest, checks its sha256, stages it beside the
@@ -50,6 +50,8 @@ const DISMISSED: &str = "updates.dismissedVersion";
 /// The last day and month the server counted, set only after it answered 2xx or 404.
 const COUNT_DAY: &str = "updates.countedDay";
 const COUNT_MONTH: &str = "updates.countedMonth";
+/// Whether the first count of a day carries the usage of yesterday (D-56). On by default.
+pub(crate) const SHARE_USAGE: &str = "updates.shareUsage";
 
 /// How often a running app looks at the clock for the next automatic check.
 const RECHECK_EVERY: Duration = Duration::from_secs(60 * 60);
@@ -287,8 +289,11 @@ impl Updater {
         .detach();
     }
 
-    /// The usage of yesterday, for the first count of a day.
+    /// The usage of yesterday, or nothing while "Share anonymous usage" is off.
     pub(crate) fn shared_usage(&self) -> Option<Usage> {
+        if !self.stored_bool(SHARE_USAGE) {
+            return None;
+        }
         let database = &self.storage.database;
         let yesterday = history::today(database).ok()? - 1;
         match history::day_use(database, yesterday) {

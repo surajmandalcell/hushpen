@@ -86,7 +86,7 @@ pub fn host_allowed(host: &str) -> bool {
             | "hf.co"
             | "github.com"
             | "githubusercontent.com"
-            // Crash reports, only after the person presses Send (net/crash.rs), and the daily counts (net/usage.rs).
+            // Crash reports, only after the person presses Send (net/crash.rs).
             | "crumb.samhq.app"
             // The website About opens in the browser; the app never fetches it.
             | "hushpen.samhq.app"

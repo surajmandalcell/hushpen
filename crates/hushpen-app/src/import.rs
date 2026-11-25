@@ -802,9 +802,6 @@ impl Import {
             );
             return;
         }
-        if history::counts_as_use(&row) {
-            crate::net::usage::record_use();
-        }
         let item = &mut self.items[index];
         item.state = State::Done;
         item.progress.raise(1.0);

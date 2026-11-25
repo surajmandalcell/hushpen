@@ -41,7 +41,7 @@ Hushpen turns your voice into text, on your own computer.
 
 There is more: edit text by voice, read text aloud, drop in audio files, and search everything you said in History.
 
-**Privacy.** Your voice and text never leave your computer. Update checks are off until you turn them on, and they send the app name, platform, and version. Once a day, Hushpen also sends one anonymous count of how often you used it. You can turn that off in Settings, under Share anonymous usage. We keep no IP address and no id. Crash reports are sent only when you press Send. After a crash, the next launch asks first. Report… shows exactly what would be sent, with a Send to Developer button; Ignore or Don’t Send deletes it.
+**Privacy.** Your voice and text never leave your computer. Update checks are off until you turn them on, and they send the app name, platform, and version. Once a day, the first check also sends one anonymous number about how often you used Hushpen. You can turn that off in Settings, under Share anonymous usage. We keep no IP address and no id. Crash reports are sent only when you press Send. After a crash, the next launch asks first. Report… shows exactly what would be sent, with a Send to Developer button; Ignore or Don’t Send deletes it.
 
 ### How it compares
 

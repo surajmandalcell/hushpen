@@ -29,13 +29,13 @@ pub fn auto_install(page: &Page, cx: &mut App) -> AnyElement {
     )
 }
 
-/// The switch of the IndieCrumb daily counts.
+/// The usage switch.
 pub fn share_usage(page: &Page, cx: &mut App) -> AnyElement {
-    let on = page.settings.read(cx).stored_bool(crate::net::usage::SHARE);
+    let on = page.settings.read(cx).stored_bool(crate::updater::SHARE_USAGE);
     page.toggle(
         "updates.shareUsage",
         "Share anonymous usage",
-        "Once a day: how often you used Hushpen.",
+        "Helps us see which parts of Hushpen people use.",
         on,
         slots::SHARE_USAGE,
         Settings::toggle_share_usage,

@@ -227,21 +227,16 @@ const USE_DAYS_KEPT: i64 = 7;
 const LOCAL_DAY: &str =
     "CAST(julianday(?1 / 1000, 'unixepoch', 'localtime') - 2440587.5 AS INTEGER)";
 
-/// Whether a saved row is one use: a completed dictation with words, file transcription, or
-/// read aloud.
-pub fn counts_as_use(row: &Row) -> bool {
-    row.status == "completed"
+/// Counts one use on the local day of a completed dictation, file transcription, or read
+/// aloud, and marks its model as used. Days older than [`USE_DAYS_KEPT`] are removed.
+fn add_use(db: &Database, row: &Row) -> Result<()> {
+    let counted = row.status == "completed"
         && match row.kind.as_str() {
             "dictation" => word_count(row.final_text.as_deref()) > 0,
             "import" | "read" => true,
             _ => false,
-        }
-}
-
-/// Counts one use on the local day of a completed dictation, file transcription, or read
-/// aloud, and marks its model as used. Days older than [`USE_DAYS_KEPT`] are removed.
-fn add_use(db: &Database, row: &Row) -> Result<()> {
-    if !counts_as_use(row) {
+        };
+    if !counted {
         return Ok(());
     }
     let conn = db.connection();

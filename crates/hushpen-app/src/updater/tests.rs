@@ -348,7 +348,7 @@ fn a_count_rides_along_with_each_check_and_moves_the_day_and_month_after_success
     let rig = rig(cx);
     rig.set("updates.check", json!(true));
     rig.start(cx);
-    // The first check of a day carries `u`.
+    // Share anonymous usage is on by default, so the first check of a day carries `u`.
     let mut first = Count::new(rig.now.get(), "", "");
     first.usage = rig.updater.read_with(cx, |me, _| me.shared_usage());
     assert!(first.usage.is_some(), "a new day reports yesterday's usage");
