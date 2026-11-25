@@ -141,6 +141,9 @@ impl Controller {
             hook::record_event("history", &format!("write-failed {HISTORY_WRITE_FAILED}"));
             return;
         }
+        if history::counts_as_use(&row) {
+            crate::net::usage::record_use();
+        }
         let cleaned = ai
             .as_ref()
             .is_some_and(|record| record.outcome == Outcome::Used);

@@ -4,7 +4,7 @@
 //! at once when the user presses Check now. Check for Updates in About runs one check even while
 //! the switch is off, and leaves the switch off. A check sends no identifier. While the switch is
 //! on, each check also sends the anonymous count of [`Count`] to the shared update API, and the
-//! first one of a day adds the usage of yesterday while "Share anonymous usage" is on.
+//! first one of a day adds the usage of yesterday.
 //!
 //! What an offered version leads to depends on how this copy was installed. A macOS app or an
 //! AppImage downloads the file of the signed manifest, checks its sha256, stages it beside the
@@ -19,7 +19,7 @@ mod panel;
 use crate::about::Opener;
 use crate::hook;
 use crate::net::download::Progress;
-use crate::net::update::{CheckError, UpdateFeed, count_url};
+use crate::net::update::{CheckError, UpdateFeed};
 use crate::storage::Storage;
 use futures::StreamExt as _;
 use futures::channel::mpsc;
@@ -50,8 +50,6 @@ const DISMISSED: &str = "updates.dismissedVersion";
 /// The last day and month the server counted, set only after it answered 2xx or 404.
 const COUNT_DAY: &str = "updates.countedDay";
 const COUNT_MONTH: &str = "updates.countedMonth";
-/// Whether the first count of a day carries the usage of yesterday (D-56). On by default.
-pub(crate) const SHARE_USAGE: &str = "updates.shareUsage";
 
 /// How often a running app looks at the clock for the next automatic check.
 const RECHECK_EVERY: Duration = Duration::from_secs(60 * 60);
@@ -289,11 +287,8 @@ impl Updater {
         .detach();
     }
 
-    /// The usage of yesterday, or nothing while "Share anonymous usage" is off.
+    /// The usage of yesterday, for the first count of a day.
     pub(crate) fn shared_usage(&self) -> Option<Usage> {
-        if !self.stored_bool(SHARE_USAGE) {
-            return None;
-        }
         let database = &self.storage.database;
         let yesterday = history::today(database).ok()? - 1;
         match history::day_use(database, yesterday) {
@@ -303,21 +298,6 @@ impl Updater {
                 None
             }
         }
-    }
-
-    /// The request the first check of a day sends, with the usage it reports, as the "See
-    /// what's sent" dialog shows it.
-    pub(crate) fn daily_request(&self) -> (String, Option<Usage>) {
-        let month = self
-            .storage
-            .settings
-            .get(COUNT_MONTH)
-            .and_then(|value| value.as_str().map(str::to_owned))
-            .unwrap_or_default();
-        let mut count = Count::new((self.clock)(), "", &month);
-        count.usage = self.shared_usage();
-        let query = count.query(&self.current, Os::current());
-        (count_url(&query), count.usage)
     }
 
     fn counted(&self, count: &Count) {

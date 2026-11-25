@@ -117,6 +117,14 @@ pub fn run(hidden: bool, show_window: bool) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    crate::net::usage::start(
+        storage.data.root(),
+        storage
+            .settings
+            .get(crate::net::usage::SHARE)
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false),
+    );
     let default_model = hushpen_core::catalog::embedded()
         .default_whisper()
         .map(|entry| entry.id.clone())

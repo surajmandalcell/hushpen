@@ -6,9 +6,7 @@
 //! API keeps the same slot list, so a slot never changes its model: a removed model keeps its
 //! slot, and a new model takes the next free one.
 
-use serde_json::{Value, json};
-
-/// The model id that History stores, and the name the "See what's sent" dialog shows.
+/// The model id that History stores, and its name.
 pub const MODEL_SLOTS: [(&str, &str); 11] = [
     ("nemotron-labs-unified-asr-0.6b-q8_0", "Nemotron"),
     ("parakeet-v3-q4_k", "Parakeet v3"),
@@ -60,25 +58,6 @@ impl Usage {
             slots: (number >> 10) as u16,
         })
     }
-
-    /// The names of the models used, in slot order.
-    pub fn models(&self) -> Vec<&'static str> {
-        MODEL_SLOTS
-            .iter()
-            .enumerate()
-            .filter(|(slot, _)| self.slots & 1 << slot != 0)
-            .map(|(_, (_, name))| *name)
-            .collect()
-    }
-
-    /// The same data in words, for the dialog.
-    pub fn to_json(&self) -> Value {
-        json!({
-            "used": self.uses > 0,
-            "times": self.uses,
-            "models": self.models(),
-        })
-    }
 }
 
 #[cfg(test)]
@@ -91,11 +70,6 @@ mod tests {
         let usage = Usage::new(12, &models);
         assert_eq!(usage.number(), 12 | (1 | 1 << 8) << 10 | 1 << 26);
         assert_eq!(Usage::from_number(usage.number()), Some(usage));
-        assert_eq!(usage.models(), ["Nemotron", "Kokoro"]);
-        assert_eq!(
-            usage.to_json(),
-            json!({"used": true, "times": 12, "models": ["Nemotron", "Kokoro"]})
-        );
 
         let busy = Usage::new(5000, &[]);
         assert_eq!(Usage::from_number(busy.number()).unwrap().uses, MAX_USES);

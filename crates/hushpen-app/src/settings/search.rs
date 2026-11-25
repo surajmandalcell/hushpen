@@ -457,7 +457,7 @@ pub static ROWS: &[RowMeta] = &[
         Updates,
         "updates.shareUsage",
         "Share anonymous usage",
-        &["privacy", "telemetry", "analytics", "statistics", "sent"],
+        &["privacy", "telemetry", "analytics", "statistics"],
     ),
 ];
 

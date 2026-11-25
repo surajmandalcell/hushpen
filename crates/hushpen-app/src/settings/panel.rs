@@ -178,7 +178,7 @@ fn rows_of(row: RowId, page: &Page, cx: &mut App) -> Vec<AnyElement> {
         RowId::UpdateCheck => vec![updates::check(page, cx)],
         RowId::AutoInstall => vec![updates::auto_install(page, cx)],
         RowId::UpdateStatus => updates::status(page, cx),
-        RowId::ShareUsage => updates::share_usage(page, cx),
+        RowId::ShareUsage => vec![updates::share_usage(page, cx)],
     }
 }
 

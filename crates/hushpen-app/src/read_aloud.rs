@@ -1189,6 +1189,9 @@ impl ReadAloud {
             }
             return;
         }
+        if history::counts_as_use(&row) {
+            crate::net::usage::record_use();
+        }
         hook::record_event("history", "saved read");
         cx.emit(ReadRequest::Saved);
     }

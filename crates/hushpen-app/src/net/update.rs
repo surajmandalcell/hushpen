@@ -5,7 +5,7 @@
 //! public key that ships inside the app (`assets/update-key.pub`). The count ([`UpdateFeed::count`])
 //! sends the app name, platform, version, and day or month flags to the shared update API, and
 //! nothing that identifies the person or the install (D-14). The first count of a day also
-//! sends the usage number of `hushpen_core::usage` while "Share anonymous usage" is on (D-56).
+//! sends the usage number of `hushpen_core::usage` (D-56).
 
 use super::download::{Downloader, Outcome, Progress, Spec};
 use super::fetch::{FetchError, Fetcher, UreqFetcher};
@@ -48,8 +48,8 @@ fn blocked_error(blocked: &Blocked) -> CheckError {
     failed(blocked.reason.clone())
 }
 
-/// The full count request of `query`, which "See what's sent" in Settings also shows.
-pub fn count_url(query: &str) -> String {
+/// The full count request of `query`.
+fn count_url(query: &str) -> String {
     format!("{COUNT_URL}?{query}")
 }
 

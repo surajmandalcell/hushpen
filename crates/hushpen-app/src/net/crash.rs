@@ -7,13 +7,16 @@ use gpui_kit::App;
 use std::path::Path;
 use std::sync::Arc;
 
+/// The IndieCrumb host.
+pub(super) const ENDPOINT: &str = "https://crumb.samhq.app";
+
 /// The public IndieCrumb ingest key: it ships in the app and can only submit reports.
-const KEY: &str = "ic_pub_e02ef20e5bf29972c8ce2a943c407ddf";
+pub(super) const KEY: &str = "ic_pub_e02ef20e5bf29972c8ce2a943c407ddf";
 
 /// Opens the client and installs the panic hook. Call once, early, before the window opens.
 pub fn start(data: &Path) -> Option<Arc<indiecrumb::Client>> {
     let client = indiecrumb::Client::new(indiecrumb::Config {
-        endpoint: "https://crumb.samhq.app".into(),
+        endpoint: ENDPOINT.into(),
         key: KEY.into(),
         version: env!("CARGO_PKG_VERSION").into(),
         build: String::new(),

@@ -5,6 +5,7 @@ pub mod crash;
 pub mod devices;
 pub mod endpoint;
 pub mod tunnel;
+pub mod usage;
 #[cfg(test)]
 use hushpen_store::net::test_server;
 pub use hushpen_store::net::{Purpose, download, fetch, policy};
