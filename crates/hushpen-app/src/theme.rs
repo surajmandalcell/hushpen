@@ -785,9 +785,14 @@ pub mod hud {
 mod tests {
     use super::*;
 
+    /// DESIGN.md is kept private (linked in from the owner's vault), so public clones and CI skip these checks.
+    fn design_md() -> Option<String> {
+        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../DESIGN.md")).ok()
+    }
+
     /// `name: value` lines of one top-level block in the DESIGN.md front matter.
     fn design_block(name: &str) -> Vec<(String, String)> {
-        let design = include_str!("../../../DESIGN.md");
+        let design = design_md().expect("DESIGN.md");
         let mut lines = design.lines().skip_while(|l| *l != format!("{name}:"));
         lines.next();
         lines
@@ -817,7 +822,7 @@ mod tests {
 
     /// One field of one entry in the `components` block, such as `("button", "height")`.
     fn component(name: &str, field: &str) -> String {
-        let design = include_str!("../../../DESIGN.md");
+        let design = design_md().expect("DESIGN.md");
         let mut lines = design
             .lines()
             .skip_while(|l| *l != "components:")
@@ -835,6 +840,9 @@ mod tests {
 
     #[test]
     fn every_design_color_is_in_the_theme_with_the_same_value() {
+        if design_md().is_none() {
+            return;
+        }
         let design = design_block("colors");
         assert!(design.len() > 30, "parsed {} colors", design.len());
         let theme: Vec<(&str, u32)> = dark::TABLE
@@ -859,6 +867,9 @@ mod tests {
 
     #[test]
     fn every_design_radius_is_in_the_theme_with_the_same_value() {
+        if design_md().is_none() {
+            return;
+        }
         let design = design_block("rounded");
         for (name, value) in &design {
             let theme = radius::TABLE.iter().find(|(token, _)| token == name);
@@ -874,6 +885,9 @@ mod tests {
 
     #[test]
     fn every_design_spacing_is_in_the_theme_with_the_same_value() {
+        if design_md().is_none() {
+            return;
+        }
         let design = design_block("spacing");
         for (name, value) in &design {
             let theme = space::TABLE.iter().find(|(token, _)| token == name);
@@ -885,7 +899,7 @@ mod tests {
 
     #[test]
     fn typography_rows_match_design() {
-        let design = include_str!("../../../DESIGN.md");
+        let Some(design) = design_md() else { return };
         for (name, token) in [
             ("title", TITLE),
             ("toolbar-title", TOOLBAR_TITLE),
@@ -917,6 +931,9 @@ mod tests {
 
     #[test]
     fn component_sizes_match_design() {
+        if design_md().is_none() {
+            return;
+        }
         let size_of = |name, field| px_value(&component(name, field));
         assert_eq!(size_of("sidebar-row", "height"), size::NAV_ITEM_HEIGHT);
         assert_eq!(size_of("sidebar-row", "padding"), size::NAV_ITEM_PADDING);
@@ -948,6 +965,9 @@ mod tests {
 
     #[test]
     fn component_radii_and_colors_point_at_the_right_tokens() {
+        if design_md().is_none() {
+            return;
+        }
         assert_eq!(component("sidebar-row", "rounded"), "{rounded.selection}");
         assert_eq!(component("group", "rounded"), "{rounded.group}");
         assert_eq!(component("button", "rounded"), "{rounded.button}");
@@ -1063,7 +1083,7 @@ mod tests {
 
     #[test]
     fn design_md_keeps_none_of_the_old_values() {
-        let design = include_str!("../../../DESIGN.md");
+        let Some(design) = design_md() else { return };
         for old in [
             "#2F2F2F",
             "#3C3C3C",
