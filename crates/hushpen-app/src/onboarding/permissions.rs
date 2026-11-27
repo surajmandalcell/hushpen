@@ -236,8 +236,9 @@ impl Onboarding {
     fn open_pane(&mut self, permission: Permission, repaired: bool, cx: &App) {
         let pane = self.pane_of(permission, cx);
         hook::record_event("onboarding", &format!("pane {}", pane.key()));
-        if let Err(error) = self.guide.open(pane.settings_url()) {
-            log::warn!("System Settings could not be opened: {error}");
+        match self.guide.open(pane.settings_url()) {
+            Ok(()) => self.guide.follow(pane),
+            Err(error) => log::warn!("System Settings could not be opened: {error}"),
         }
         self.note_pane(permission, pane);
         if repaired && !self.stale.contains(&permission) {
@@ -303,9 +304,14 @@ impl Onboarding {
         hook::record_event("onboarding", &format!("open {}", permission.key()));
         let pane = self.pane_of(permission, cx);
         self.note_pane(permission, pane);
-        self.notice = pane
+        let opened = pane
             .settings_url_for(self.platform)
-            .and_then(|url| self.guide.open(url).err())
+            .map(|url| self.guide.open(url));
+        if opened == Some(Ok(())) {
+            self.guide.follow(pane);
+        }
+        self.notice = opened
+            .and_then(Result::err)
             .map(|_| {
                 "System Settings could not be opened. Open Privacy and Security yourself."
                     .to_owned()

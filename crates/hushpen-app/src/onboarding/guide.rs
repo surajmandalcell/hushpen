@@ -18,6 +18,9 @@ pub trait Guide {
     /// when the request is over, or a receiver that answers once it is.
     fn request(&self, permission: Permission, repair: bool) -> Option<oneshot::Receiver<()>>;
     fn open(&self, url: &str) -> Result<(), String>;
+    /// Shows the floating guide beside System Settings for the Privacy pane of `pane`, which
+    /// was just opened. It does nothing off macOS.
+    fn follow(&self, _pane: Permission) {}
     /// Starts a new copy of the app once this one has ended. The caller quits right after.
     fn relaunch(&self) -> Result<(), String>;
 }
@@ -50,6 +53,10 @@ impl Guide for SystemGuide {
 
     fn open(&self, url: &str) -> Result<(), String> {
         hushpen_platform::permissions::open_url(url).map_err(|error| error.to_string())
+    }
+
+    fn follow(&self, pane: Permission) {
+        hushpen_platform::settings_guide::show(pane);
     }
 
     fn relaunch(&self) -> Result<(), String> {

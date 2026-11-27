@@ -57,3 +57,7 @@ harness = false
 [[test]]
 name = "window_chrome"
 harness = false
+
+[[test]]
+name = "settings_guide"
+harness = false

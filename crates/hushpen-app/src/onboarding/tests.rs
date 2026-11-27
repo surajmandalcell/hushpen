@@ -25,6 +25,7 @@ struct FakeGuide {
     /// Whether each request in `requested` reset the record of Hushpen first.
     repairs: RefCell<Vec<bool>>,
     opened: RefCell<Vec<String>>,
+    followed: RefCell<Vec<Permission>>,
     refuse: std::cell::Cell<bool>,
     relaunched: std::cell::Cell<u32>,
     refuse_relaunch: std::cell::Cell<bool>,
@@ -69,6 +70,10 @@ impl Guide for FakeGuide {
         } else {
             Ok(())
         }
+    }
+
+    fn follow(&self, pane: Permission) {
+        self.followed.borrow_mut().push(pane);
     }
 
     fn relaunch(&self) -> Result<(), String> {
@@ -523,6 +528,11 @@ fn open_settings_on_a_denied_input_monitoring_follows_accessibility_while_it_is_
         me.open_settings(Permission::InputMonitoring, cx)
     });
     assert_eq!(*fixture.guide.opened.borrow(), [ax_url(), im_url()]);
+    assert_eq!(
+        *fixture.guide.followed.borrow(),
+        [Permission::Accessibility, Permission::InputMonitoring],
+        "the panel follows the pane that opened"
+    );
     assert!(
         fixture.guide.requested.borrow().is_empty(),
         "Open Settings calls no request API"

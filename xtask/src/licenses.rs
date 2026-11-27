@@ -71,6 +71,12 @@ pub const SECTIONS: &[Section] = &[
         ],
     },
     Section {
+        id: "permissionflow",
+        title: "PermissionFlow",
+        note: "The floating guide beside System Settings on macOS follows the drag panel of PermissionFlow (https://github.com/jaywcjlove/PermissionFlow), rewritten in Rust. MIT license.",
+        texts: &["packaging/licenses/manual/mit-permissionflow.txt"],
+    },
+    Section {
         id: "gpui",
         title: "GPUI",
         note: "User interface framework (the gpui-pre crates), Copyright 2022 - 2025 Zed Industries, Inc. Apache License 2.0. https://github.com/zed-industries/zed",
