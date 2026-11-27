@@ -12,7 +12,6 @@ pub mod memory;
 pub mod permissions;
 pub mod reduce_motion;
 pub mod restart;
-pub mod settings_guide;
 pub mod tray_host;
 pub mod window;
 

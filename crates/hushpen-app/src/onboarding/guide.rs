@@ -56,7 +56,11 @@ impl Guide for SystemGuide {
     }
 
     fn follow(&self, pane: Permission) {
-        hushpen_platform::settings_guide::show(pane);
+        sam_permissions::show(match pane {
+            Permission::Accessibility => sam_permissions::Pane::Accessibility,
+            Permission::InputMonitoring => sam_permissions::Pane::InputMonitoring,
+            Permission::Microphone => sam_permissions::Pane::Microphone,
+        });
     }
 
     fn relaunch(&self) -> Result<(), String> {

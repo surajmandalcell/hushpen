@@ -42,6 +42,8 @@ hushpen-store = { path = "crates/hushpen-store" }
 hushpen-testhook = { path = "crates/hushpen-testhook" }
 # Crash reports that wait for Send (MIT, the owner's own crate).
 indiecrumb = { git = "https://github.com/samhqapp/indiecrumb-rs", tag = "v0.3.1", features = ["crash", "feedback", "ureq", "gpui"] }
+# The floating guide beside System Settings (MIT, the owner's own crate).
+sam-permissions = { git = "https://github.com/samhqapp/sam-permissions-rs", tag = "v0.1.0" }
 
 # UI.
 gpui-pre = "=0.3.7"
